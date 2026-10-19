@@ -1,6 +1,6 @@
-# Andalus BI
+# Farabi
 
-Andalus BI is a hybrid business-intelligence platform combining governed semantic analytics, conventional dashboards, AI-assisted analytical workflows, and reusable dashboard artifacts.
+Farabi is a hybrid business-intelligence platform combining governed semantic analytics, conventional dashboards, AI-assisted analytical workflows, and reusable dashboard artifacts.
 
 ## Project status
 
