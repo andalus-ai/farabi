@@ -11,7 +11,7 @@ public final class QueryPorts {
     @FunctionalInterface public interface Executor { Submission submit(Plan plan); }
     public interface ExecutionRepository {
         void create(Execution execution);
-        Optional<Execution> find(UUID id);
-        boolean transition(UUID id, Status expected, Status next, String providerJobId);
+        Optional<Execution> find(UUID id, String workspaceId);
+        boolean transition(UUID id, String workspaceId, Status expected, Status next, String providerJobId);
     }
 }
