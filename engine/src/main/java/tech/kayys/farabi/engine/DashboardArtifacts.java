@@ -32,6 +32,6 @@ public final class DashboardArtifacts {
     }
     public interface Repository {
         void save(Published artifact);
-        Optional<Published> find(UUID artifactId);
+        Optional<Published> find(UUID artifactId, String workspaceId);
     }
 }
