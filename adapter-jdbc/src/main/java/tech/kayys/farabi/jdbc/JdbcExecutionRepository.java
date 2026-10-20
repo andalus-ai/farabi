@@ -20,11 +20,11 @@ public final class JdbcExecutionRepository implements ExecutionRepository {
             p.setTimestamp(7,Timestamp.from(e.createdAt()));p.setTimestamp(8,Timestamp.from(e.updatedAt()));p.executeUpdate();
         } catch(SQLException ex) { throw new IllegalStateException("create execution failed",ex); }
     }
-    @Override public Optional<Execution> find(UUID id) {
+    @Override public Optional<Execution> find(UUID id,String workspaceId) {
         Objects.requireNonNull(id);
-        String sql="SELECT id,workspace_id,subject_id,source_id,provider_job_id,status,created_at,updated_at FROM farabi_query_executions WHERE id=?";
+        String sql="SELECT id,workspace_id,subject_id,source_id,provider_job_id,status,created_at,updated_at FROM farabi_query_executions WHERE id=? AND workspace_id=?";
         try(Connection c=dataSource.getConnection(); PreparedStatement p=c.prepareStatement(sql)) {
-            p.setObject(1,id);
+            p.setObject(1,id);p.setString(2,workspaceId);
             try(ResultSet r=p.executeQuery()) {
                 if(!r.next()) return Optional.empty();
                 return Optional.of(new Execution(r.getObject("id",UUID.class),r.getString("workspace_id"),r.getString("subject_id"),
@@ -33,7 +33,7 @@ public final class JdbcExecutionRepository implements ExecutionRepository {
             }
         } catch(SQLException ex) { throw new IllegalStateException("find execution failed",ex); }
     }
-    @Override public boolean transition(UUID id,Status expected,Status next,String providerJobId) {
+    @Override public boolean transition(UUID id,String workspaceId,Status expected,Status next,String providerJobId) {
         Objects.requireNonNull(id);Objects.requireNonNull(expected);Objects.requireNonNull(next);
         boolean allowed=switch(expected) {
             case PENDING -> next==Status.SUBMITTED||next==Status.FAILED||next==Status.CANCELLED;
@@ -43,9 +43,9 @@ public final class JdbcExecutionRepository implements ExecutionRepository {
         };
         if(!allowed) throw new IllegalArgumentException("illegal status transition");
         if(providerJobId!=null) tech.kayys.farabi.engine.QueryContracts.required(providerJobId,"providerJobId");
-        String sql="UPDATE farabi_query_executions SET status=?,provider_job_id=COALESCE(?,provider_job_id),updated_at=CURRENT_TIMESTAMP WHERE id=? AND status=?";
+        String sql="UPDATE farabi_query_executions SET status=?,provider_job_id=COALESCE(?,provider_job_id),updated_at=CURRENT_TIMESTAMP WHERE id=? AND workspace_id=? AND status=?";
         try(Connection c=dataSource.getConnection();PreparedStatement p=c.prepareStatement(sql)) {
-            p.setString(1,next.name());p.setString(2,providerJobId);p.setObject(3,id);p.setString(4,expected.name());
+            p.setString(1,next.name());p.setString(2,providerJobId);p.setObject(3,id);p.setString(4,workspaceId);p.setString(5,expected.name());
             return p.executeUpdate()==1;
         } catch(SQLException ex) { throw new IllegalStateException("transition execution failed",ex); }
     }
