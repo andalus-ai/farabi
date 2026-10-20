@@ -24,7 +24,7 @@ public final class DashboardPromotionService {
     }
     public Published get(UUID id,String authenticatedWorkspace) {
         QueryContracts.required(authenticatedWorkspace,"workspace");
-        Published published=repository.find(Objects.requireNonNull(id))
+        Published published=repository.find(Objects.requireNonNull(id),authenticatedWorkspace)
             .orElseThrow(()->new IllegalArgumentException("dashboard not found"));
         if(!published.workspaceId().equals(authenticatedWorkspace))
             throw new IllegalArgumentException("dashboard not found");
