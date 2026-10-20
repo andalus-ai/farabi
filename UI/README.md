@@ -1,1 +1,0 @@
-# Farabi CLI
