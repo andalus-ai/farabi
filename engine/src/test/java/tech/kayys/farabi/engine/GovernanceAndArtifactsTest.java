@@ -27,7 +27,7 @@ class GovernanceAndArtifactsTest {
         Map<UUID,Published> data=new HashMap<>();
         Repository repo=new Repository() {
             public void save(Published a){data.put(a.id(),a);}
-            public Optional<Published> find(UUID id){return Optional.ofNullable(data.get(id));}
+            public Optional<Published> find(UUID id,String workspaceId){return Optional.ofNullable(data.get(id)).filter(a->a.workspaceId().equals(workspaceId));}
         };
         var service=new DashboardPromotionService(repo,Clock.systemUTC());
         var mutable=new ArrayList<>(List.of(new Chart("chart","bar","sales","revenue")));
