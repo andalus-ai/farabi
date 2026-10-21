@@ -23,11 +23,11 @@ public final class JdbcDashboardArtifactRepository implements Repository {
             p.setTimestamp(9,Timestamp.from(artifact.publishedAt()));p.executeUpdate();
         } catch(SQLException ex) { throw new IllegalStateException("publish dashboard failed",ex); }
     }
-    @Override public Optional<Published> find(UUID id) {
+    @Override public Optional<Published> find(UUID id,String workspaceId) {
         Objects.requireNonNull(id);
-        String sql="SELECT id,draft_id,workspace_id,title,revision,charts,prompt_provenance,published_by,published_at FROM farabi_dashboard_artifacts WHERE id=?";
+        String sql="SELECT id,draft_id,workspace_id,title,revision,charts,prompt_provenance,published_by,published_at FROM farabi_dashboard_artifacts WHERE id=? AND workspace_id=?";
         try(Connection c=source.getConnection();PreparedStatement p=c.prepareStatement(sql)) {
-            p.setObject(1,id);
+            p.setObject(1,id);p.setString(2,workspaceId);
             try(ResultSet r=p.executeQuery()) {
                 if(!r.next()) return Optional.empty();
                 return Optional.of(new Published(r.getObject("id",UUID.class),r.getObject("draft_id",UUID.class),

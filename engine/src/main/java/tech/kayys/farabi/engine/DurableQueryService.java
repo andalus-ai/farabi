@@ -35,14 +35,14 @@ public final class DurableQueryService {
             request.sourceId(),null,Status.PENDING,now,now);
         repository.create(pending);
         Submission remote=Objects.requireNonNull(executor.submit(plan),"executor returned null");
-        if(!repository.transition(pending.id(),Status.PENDING,Status.SUBMITTED,remote.providerJobId()))
+        if(!repository.transition(pending.id(),pending.workspaceId(),Status.PENDING,Status.SUBMITTED,remote.providerJobId()))
             throw new IllegalStateException("remote accepted but local state conflicted; reconcile "+pending.id());
-        return repository.find(pending.id()).orElseThrow(()->new IllegalStateException("missing execution "+pending.id()));
+        return repository.find(pending.id(),pending.workspaceId()).orElseThrow(()->new IllegalStateException("missing execution "+pending.id()));
     }
 
     public Execution get(UUID id,String workspaceId,String subjectId) {
         Objects.requireNonNull(id); QueryContracts.required(workspaceId,"workspaceId"); QueryContracts.required(subjectId,"subjectId");
-        Execution execution=repository.find(id).orElseThrow(()->new IllegalArgumentException("not found"));
+        Execution execution=repository.find(id,workspaceId).orElseThrow(()->new IllegalArgumentException("not found"));
         if(!execution.workspaceId().equals(workspaceId)||!execution.subjectId().equals(subjectId))
             throw new IllegalArgumentException("not found");
         return execution;
