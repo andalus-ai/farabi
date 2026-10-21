@@ -13,10 +13,10 @@ class DurableQueryServiceTest {
     static class Store implements ExecutionRepository {
         Map<UUID,Execution> items=new HashMap<>();
         public void create(Execution e){items.put(e.id(),e);}
-        public Optional<Execution> find(UUID id){return Optional.ofNullable(items.get(id));}
-        public boolean transition(UUID id,Status expected,Status next,String providerId){
+        public Optional<Execution> find(UUID id,String workspaceId){return Optional.ofNullable(items.get(id)).filter(e->e.workspaceId().equals(workspaceId));}
+        public boolean transition(UUID id,String workspaceId,Status expected,Status next,String providerId){
             Execution old=items.get(id);
-            if(old==null||old.status()!=expected)return false;
+            if(old==null||!old.workspaceId().equals(workspaceId)||old.status()!=expected)return false;
             items.put(id,new Execution(id,old.workspaceId(),old.subjectId(),old.sourceId(),providerId,next,old.createdAt(),old.updatedAt().plusSeconds(1)));
             return true;
         }
