@@ -2,8 +2,6 @@ package tech.kayys.farabi.engine;
 
 import java.util.*;
 import tech.kayys.farabi.engine.DashboardManifests.*;
-import tech.kayys.farabi.engine.QueryLifecycle.*;
-import tech.kayys.farabi.engine.VisualizationContracts.*;
 
 /**
  * Workspace-scoped dashboard reconstruction with caller-supplied governed data.
@@ -15,7 +13,7 @@ public final class DashboardRuntime {
   List<Map<String,Object>> fetch(String workspace,String subject,String datasetId,int limit);
  }
  public record ChartData(String chartId,String renderer,List<Map<String,Object>> rows) {
-  public ChartData {rows=List.copyOf(rows.stream().map(Map::copyOf).toList());}
+  public ChartData {rows=List.copyOf(Objects.requireNonNull(rows).stream().map(row -> Collections.unmodifiableMap(new LinkedHashMap<>(row))).toList());}
  }
  public record Rendered(RendererEnvelope.Dashboard dashboard,List<ChartData> data) {
   public Rendered {data=List.copyOf(data);}
@@ -36,7 +34,7 @@ public final class DashboardRuntime {
   for(var chart:envelope.charts())required.add(chart.datasetId());
   for(String dataset:required)datasets.authorize(workspace,subject,dataset);
   Map<String,List<Map<String,Object>>> fetched=new HashMap<>();
-  for(String dataset:required)fetched.put(dataset,List.copyOf(datasets.fetch(workspace,subject,dataset,limit)));
+  for(String dataset:required)fetched.put(dataset,List.copyOf(Objects.requireNonNull(datasets.fetch(workspace,subject,dataset,limit))));
   List<ChartData> charts=new ArrayList<>();
   for(var chart:envelope.charts()){
    List<Map<String,Object>> rows=fetched.get(chart.datasetId());
