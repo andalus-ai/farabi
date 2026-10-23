@@ -25,7 +25,7 @@ void main() {
     registerFarabiNativeRenderers(registry);
     final chart = makeChart('farabi.kpi', [{'amount': 125}]);
     await tester.pumpWidget(MaterialApp(
-      home: Scaffold(body: registry.build(tester.element(find.byType(Scaffold)), chart)),
+      home: Builder(builder: (context) => Scaffold(body: registry.build(context, chart))),
     ));
     expect(find.text('125'), findsOneWidget);
   });
