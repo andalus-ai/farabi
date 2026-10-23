@@ -3,3 +3,4 @@ export 'src/dashboard.dart';
 export 'src/batik_bridge.dart';
 export 'src/dashboard_loader.dart';
 export 'src/native_renderers.dart';
+export 'src/tenun_data.dart';
