@@ -5,7 +5,7 @@ This branch adds a CI workflow for both Flutter packages:
 - `flutter/farabi_dashboard`
 - `flutter/farabi_tenun`
 
-CI installs Flutter stable, resolves dependencies, checks Dart formatting, runs static analysis and executes tests.
+CI installs Flutter stable, resolves dependencies, runs static analysis and executes tests. Formatting can be applied locally; it is not yet enforced by CI.
 
 ## Local commands
 
