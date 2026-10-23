@@ -1,0 +1,32 @@
+name: Flutter packages
+on:
+  push:
+    branches: [main, 'feature/**']
+    paths:
+      - 'flutter/**'
+      - '.github/workflows/flutter-packages.yml'
+  pull_request:
+    paths:
+      - 'flutter/**'
+      - '.github/workflows/flutter-packages.yml'
+jobs:
+  flutter:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        package: [farabi_dashboard, farabi_tenun]
+    defaults:
+      run:
+        working-directory: flutter/${{ matrix.package }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+      - run: flutter --version
+      - run: flutter pub get
+      - run: dart format --output=none --set-exit-if-changed lib test
+      - run: flutter analyze
+      - run: flutter test
