@@ -19,7 +19,7 @@ public final class ManifestPromotionService {
             throw new SecurityException("manifest publication denied");
         if(!draft.title().equals(composition.visualization().title()))
             throw new IllegalArgumentException("draft and visualization titles differ");
-        Manifest manifest=new Manifest(UUID.randomUUID(),draft.id(),workspace,revision,SCHEMA_VERSION,
+        Manifest manifest=new Manifest(UUID.randomUUID(),draft.id(),workspace,revision,DashboardManifests.SCHEMA_VERSION,
             composition.visualization(),draft.promptProvenance(),subject,clock.instant());
         repository.save(manifest);
         return manifest;
