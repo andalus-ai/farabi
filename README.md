@@ -17,7 +17,7 @@
 `runtime-quarkus` — optional Quarkus deployment.
 
 ## Ecosystem dependencies
-See [Ecosystem Dependencies and Integration Boundaries](docs/ECOSYSTEM_DEPENDENCIES.md) for the Numou, Toba, Batik, and Tenun dependency map, candidate Numou Maven coordinates, ownership rules, and integration acceptance gates. These are architectural candidates, not claims of completed integrations.
+See [Ecosystem Dependencies and Integration Boundaries](docs/ECOSYSTEM_DEPENDENCIES.md) for the Numou, Andalus Framework/Runtime, Toba, Batik, and Tenun dependency map, candidate Maven artifacts, runtime compatibility constraints, ownership rules, and integration acceptance gates. These are architectural candidates, not claims of completed integrations.
 
 ## Build
 Requires Java 21 and Maven 3.9+: `mvn verify`.
