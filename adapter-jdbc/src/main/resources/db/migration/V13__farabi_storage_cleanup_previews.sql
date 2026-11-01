@@ -28,3 +28,17 @@ CREATE TABLE farabi_storage_cleanup_plan_items (
 );
 CREATE INDEX idx_farabi_storage_cleanup_plan_items_workspace
     ON farabi_storage_cleanup_plan_items(workspace_id, plan_id);
+
+-- Preview records are evidence of what an operator reviewed; retain append-only semantics.
+CREATE FUNCTION farabi_reject_storage_cleanup_preview_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'farabi storage cleanup previews are append-only';
+END;
+$$;
+CREATE TRIGGER trg_farabi_storage_cleanup_plans_immutable
+    BEFORE UPDATE OR DELETE ON farabi_storage_cleanup_plans
+    FOR EACH ROW EXECUTE FUNCTION farabi_reject_storage_cleanup_preview_mutation();
+CREATE TRIGGER trg_farabi_storage_cleanup_items_immutable
+    BEFORE UPDATE OR DELETE ON farabi_storage_cleanup_plan_items
+    FOR EACH ROW EXECUTE FUNCTION farabi_reject_storage_cleanup_preview_mutation();
