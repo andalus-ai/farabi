@@ -11,6 +11,7 @@ import software.amazon.awssdk.services.s3.S3Configuration;
 import tech.kayys.farabi.engine.DatasetImportPorts.UploadSourceIntake;
 import tech.kayys.farabi.engine.DatasetImportPorts.Profiler;
 import tech.kayys.farabi.s3.S3CompatibleDatasetAdapter;
+import tech.kayys.farabi.file.LocalFileDatasetAdapter;
 import jakarta.inject.Singleton;
 import java.nio.file.Path;
 import java.time.Clock;
