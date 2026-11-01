@@ -8,7 +8,8 @@ CREATE TABLE farabi_dataset_import_jobs (
     max_attempts INTEGER NOT NULL CHECK (max_attempts > 0),
     lease_owner VARCHAR(200),
     lease_token UUID,
-    lease_until TIMESTAMPTZ,\n    available_at TIMESTAMPTZ NOT NULL,
+    lease_until TIMESTAMPTZ,
+    available_at TIMESTAMPTZ NOT NULL,
     error_code VARCHAR(100),
     error_message VARCHAR(2000),
     created_at TIMESTAMPTZ NOT NULL,
@@ -20,6 +21,6 @@ CREATE TABLE farabi_dataset_import_jobs (
 );
 
 CREATE INDEX idx_farabi_import_jobs_claim
-    ON farabi_dataset_import_jobs(status, lease_until, created_at);
+    ON farabi_dataset_import_jobs(status, available_at, lease_until, created_at);
 CREATE INDEX idx_farabi_import_jobs_dataset
     ON farabi_dataset_import_jobs(workspace_id, dataset_id, created_at DESC);
