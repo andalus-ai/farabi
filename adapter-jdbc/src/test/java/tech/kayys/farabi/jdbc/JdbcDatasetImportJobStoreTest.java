@@ -8,6 +8,7 @@ import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import tech.kayys.farabi.engine.DatasetImportJobPorts.*;
+import tech.kayys.farabi.engine.DatasetContracts;
 
 class JdbcDatasetImportJobStoreTest {
     private DataSource source;
@@ -40,9 +41,30 @@ class JdbcDatasetImportJobStoreTest {
         assertEquals(Status.QUEUED,store.find(claimed.id(),"ws").orElseThrow().status());
         assertTrue(store.claim(new Lease("worker-b",now.plusSeconds(6),now.plusSeconds(36))).isEmpty());
         Job second=store.claim(new Lease("worker-b",now.plusSeconds(8),now.plusSeconds(38))).orElseThrow();
-        assertTrue(store.complete(second.id(),second.leaseToken(),now.plusSeconds(4)));
+        assertTrue(store.complete(second.id(),second.leaseToken(),now.plusSeconds(9)));
         assertEquals(Status.SUCCEEDED,store.find(second.id(),"ws").orElseThrow().status());
         assertFalse(store.complete(second.id(),second.leaseToken(),now.plusSeconds(5)));
+    }
+
+
+    @Test void datasetAndJobAreCommittedAtomicallyAndIdempotencyRaceRollsBackDataset() throws Exception {
+        UUID datasetId=UUID.randomUUID();
+        DatasetContracts.Dataset dataset=new DatasetContracts.Dataset(datasetId,"ws","new-data","source",
+                DatasetContracts.Format.CSV,"local-file:ws:upload",DatasetContracts.Lifecycle.REGISTERED,now,now);
+        Job created=store.registerAndEnqueue(dataset,new NewJob("ws",datasetId,"atomic-key",3,now));
+        assertEquals(datasetId,created.datasetId());
+        try(Connection c=source.getConnection();Statement s=c.createStatement();ResultSet r=s.executeQuery("SELECT COUNT(*) FROM farabi_datasets")){
+            assertTrue(r.next());assertEquals(2,r.getInt(1));
+        }
+
+        UUID duplicateDatasetId=UUID.randomUUID();
+        DatasetContracts.Dataset duplicate=new DatasetContracts.Dataset(duplicateDatasetId,"ws","another-data","source",
+                DatasetContracts.Format.CSV,"local-file:ws:other",DatasetContracts.Lifecycle.REGISTERED,now,now);
+        Job replay=store.registerAndEnqueue(duplicate,new NewJob("ws",duplicateDatasetId,"atomic-key",3,now));
+        assertEquals(created.id(),replay.id());
+        try(Connection c=source.getConnection();Statement s=c.createStatement();ResultSet r=s.executeQuery("SELECT COUNT(*) FROM farabi_datasets")){
+            assertTrue(r.next());assertEquals(2,r.getInt(1),"failed job insert must roll back dataset insert");
+        }
     }
 
     private record TestDataSource(String url) implements DataSource {
