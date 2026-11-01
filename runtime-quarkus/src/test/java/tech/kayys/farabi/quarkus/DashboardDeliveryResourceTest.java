@@ -62,7 +62,7 @@ class DashboardDeliveryResourceTest {
  @Test void mapsMissingOrRejectedIdentityToUnauthorized() {
   when(context.requirePrincipal()).thenThrow(new SecurityException("not authenticated"));
   assertEquals(401,resource.deliver(UUID.randomUUID().toString()).getStatus());
-  when(context.requirePrincipal()).thenReturn(null);
+  doReturn(null).when(context).requirePrincipal();
   assertEquals(401,resource.deliver(UUID.randomUUID().toString()).getStatus());
   verifyNoInteractions(dashboardRuntime);
  }
