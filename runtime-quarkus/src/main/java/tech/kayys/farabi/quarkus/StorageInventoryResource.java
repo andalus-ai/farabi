@@ -25,6 +25,7 @@ import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.AuditLog;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.Event;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.EventType;
+import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.Event;
 
 /** Operator-only asynchronous inventory API. Workspace is always derived from the authenticated identity. */
 @Path("/api/storage/inventory")
@@ -58,6 +59,15 @@ public class StorageInventoryResource {
     }
 
     @GET
+    @Path("/audit")
+    public List<AuditEventView> auditHistory(@QueryParam("jobId") UUID jobId, @QueryParam("limit") Integer requestedLimit) {
+        String workspace = workspace(); authorize(workspace);
+        int limit = requestedLimit == null ? 50 : requestedLimit;
+        return audit.recent(workspace, jobId, limit).stream().map(e -> new AuditEventView(
+                e.id(), e.jobId(), e.actorId(), e.type(), e.attempt(), e.reportId(), e.errorCode(), e.occurredAt())).toList();
+    }
+
+    @GET
     public List<InventoryReport> recent(@QueryParam("limit") Integer requestedLimit) {
         String workspace = workspace(); authorize(workspace);
         int limit = requestedLimit == null ? 20 : requestedLimit;
@@ -85,7 +95,7 @@ public class StorageInventoryResource {
                 report.orphanGracePeriod().toSeconds(), report.catalogObjects(), report.providerObjects(),
                 report.consistent(), findings);
     }
-    public record JobView(UUID id, String workspaceId, DatasetStorageInventoryJobPorts.Status status,
+    public record AuditEventView(UUID id, UUID jobId, String actorId, EventType type, int attempt, UUID reportId, String errorCode, Instant occurredAt) {}\n    public record JobView(UUID id, String workspaceId, DatasetStorageInventoryJobPorts.Status status,
             int attempts, int maxAttempts, UUID reportId, String errorCode, String errorMessage,
             Instant createdAt, Instant updatedAt) {}
     public record ErrorView(String message) {}
