@@ -5,13 +5,11 @@ import jakarta.enterprise.inject.Produces;
 import io.quarkus.arc.DefaultBean;
 import io.quarkus.arc.properties.IfBuildProperty;
 import java.net.URI;
-import java.util.Optional;
 import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.S3Configuration;
 import tech.kayys.farabi.engine.DatasetImportPorts.UploadSourceIntake;
 import tech.kayys.farabi.engine.DatasetImportPorts.Profiler;
-import tech.kayys.farabi.file.LocalFileDatasetAdapter;
 import tech.kayys.farabi.s3.S3CompatibleDatasetAdapter;
 import jakarta.inject.Singleton;
 import java.nio.file.Path;
@@ -26,7 +24,6 @@ import tech.kayys.farabi.engine.DatasetPorts;
 import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
 import tech.kayys.farabi.jdbc.JdbcDatasetCatalog;
 import tech.kayys.farabi.jdbc.JdbcDatasetImportJobStore;
-import tech.kayys.farabi.file.LocalFileDatasetAdapter;
 
 /** CDI wiring for the durable import worker. Upload intake is supplied by the API edge. */
 @ApplicationScoped
