@@ -22,6 +22,9 @@ import tech.kayys.farabi.engine.DatasetStorageInventoryJobPorts.Job;
 import tech.kayys.farabi.engine.DatasetStorageInventoryService;
 import tech.kayys.farabi.engine.DatasetStorageInventoryService.FindingType;
 import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
+import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.AuditLog;
+import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.Event;
+import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.EventType;
 
 /** Operator-only asynchronous inventory API. Workspace is always derived from the authenticated identity. */
 @Path("/api/storage/inventory")
@@ -32,6 +35,7 @@ public class StorageInventoryResource {
     @Inject DatasetStorageInventoryService inventory;
     @Inject DatasetStorageInventoryJobPorts.Store jobs;
     @Inject DatasetStorageOperatorAuthorizer authorizer;
+    @Inject AuditLog audit;
     @ConfigProperty(name="farabi.storage.inventory.max-attempts", defaultValue="4") int maxAttempts;
 
     @POST
@@ -39,7 +43,10 @@ public class StorageInventoryResource {
         String workspace = workspace(); authorize(workspace);
         if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 200)
             return Response.status(400).entity(new ErrorView("Idempotency-Key header is required (max 200 characters)")).build();
+        String subject = identity.getPrincipal().getName();
         Job job = jobs.enqueue(workspace, idempotencyKey, maxAttempts, Instant.now());
+        audit.append(new Event(UUID.randomUUID(), workspace, job.id(), subject, EventType.SUBMITTED,
+                0, null, null, Instant.now()));
         return Response.accepted(map(job)).build();
     }
 
