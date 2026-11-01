@@ -42,3 +42,12 @@ The authenticated operator API is:
 The API obtains workspace and subject identity from the authenticated security identity. It does not accept a caller-supplied workspace ID. Both operations invoke `DatasetStorageOperatorAuthorizer`. The built-in CDI implementation denies every request; deployments must replace it with their explicit operator RBAC policy. Authentication alone is intentionally insufficient.
 
 Reports include storage location references in findings. Treat this endpoint and its database tables as operator-sensitive data. Apply retention and access monitoring before enabling it for production operators.
+
+
+## Durable inventory job execution
+
+Migration V11 adds `farabi_storage_inventory_jobs`, with workspace-scoped idempotency, bounded attempts, retry scheduling, lease owner/token/expiry, and report correlation. PostgreSQL workers claim work atomically using `FOR UPDATE SKIP LOCKED`; every completion/failure update is fenced by the current lease token. Expired leases can be reclaimed, and a lease expiring after the final attempt is terminally failed.
+
+The Quarkus scheduler is opt-in. Set `FARABI_STORAGE_INVENTORY_POLL_INTERVAL` to an interval such as `2s` and `FARABI_IMPORT_WORKER_ENABLED=true` to enable the scheduler. Configure `FARABI_STORAGE_INVENTORY_WORKER_ID`, `FARABI_STORAGE_INVENTORY_LEASE_DURATION`, and `FARABI_STORAGE_INVENTORY_MAX_ATTEMPTS` as needed. Polling processes at most ten jobs per tick. This worker only creates read-only inventory reports; it does not delete objects or repair accounting.
+
+The operator authorizer remains fail-closed by default. Ensure the workspace has a storage-accounting row before submitting jobs, since the queue is workspace-FK scoped.
