@@ -29,6 +29,7 @@ public final class DatasetStorageInventoryPorts {
     public interface Reports {
         void save(DatasetStorageInventoryService.Report report);
         List<DatasetStorageInventoryService.Report> recent(String workspaceId, int limit);
+        default java.util.Optional<DatasetStorageInventoryService.Report> find(java.util.UUID reportId, String workspaceId) { return java.util.Optional.empty(); }
     }
 
     public interface Inventory {
