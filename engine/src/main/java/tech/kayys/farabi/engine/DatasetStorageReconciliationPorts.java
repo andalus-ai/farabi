@@ -10,8 +10,8 @@ public final class DatasetStorageReconciliationPorts {
  public record Finding(FindingType type,long ledgerBytes,long observedBytes,String detail) {
   public Finding { Objects.requireNonNull(type); if(ledgerBytes<0||observedBytes<0||detail==null||detail.isBlank()) throw new IllegalArgumentException("invalid finding"); }
  }
- public record Report(UUID id,String workspaceId,Instant inspectedAt,long quotaBytes,long ledgerUsedBytes,long observedUsedBytes,long ledgerReservedBytes,long observedReservedBytes,List<Finding> findings) {
-  public Report { Objects.requireNonNull(id); if(workspaceId==null||workspaceId.isBlank())throw new IllegalArgumentException("workspaceId required"); Objects.requireNonNull(inspectedAt); if(quotaBytes<0||ledgerUsedBytes<0||observedUsedBytes<0||ledgerReservedBytes<0||observedReservedBytes<0)throw new IllegalArgumentException("negative byte count"); findings=List.copyOf(Objects.requireNonNull(findings)); }
+ public record Report(UUID id,String workspaceId,Instant inspectedAt,long quotaBytes,long ledgerUsedBytes,long observedUsedBytes,long ledgerReservedBytes,long observedReservedBytes,long committedReservationBytes,List<Finding> findings) {
+  public Report { Objects.requireNonNull(id); if(workspaceId==null||workspaceId.isBlank())throw new IllegalArgumentException("workspaceId required"); Objects.requireNonNull(inspectedAt); if(quotaBytes<0||ledgerUsedBytes<0||observedUsedBytes<0||ledgerReservedBytes<0||observedReservedBytes<0||committedReservationBytes<0)throw new IllegalArgumentException("negative byte count"); findings=List.copyOf(Objects.requireNonNull(findings)); }
   public boolean consistent(){return findings.isEmpty();}
  }
  public interface Store { Report inspect(String workspaceId,Instant inspectedAt); List<Report> recent(String workspaceId,int limit); }
