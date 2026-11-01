@@ -47,6 +47,8 @@ public final class DatasetImportSubmissionService {
         if(maxAttempts<1)throw new IllegalArgumentException("maxAttempts must be positive");
         if ((quota == null) != (quotaSubmissions == null))
             throw new IllegalArgumentException("quota and quota-aware submission store must be configured together");
+        if (quota != null && objects == null)
+            throw new IllegalArgumentException("quota-enabled submissions require an object cleanup port");
         this.maxAttempts=maxAttempts;this.quota=quota;this.quotaSubmissions=quotaSubmissions;this.objects=objects;
     }
 
