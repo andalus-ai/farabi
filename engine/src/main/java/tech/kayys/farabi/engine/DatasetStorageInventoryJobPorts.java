@@ -29,6 +29,8 @@ public final class DatasetStorageInventoryJobPorts {
     public interface Store {
         Job enqueue(String workspaceId, String idempotencyKey, int maxAttempts, Instant now);
         Optional<Job> find(UUID id, String workspaceId);
+        /** Atomically terminalizes expired final-attempt leases and returns the affected jobs for auditing. */
+        java.util.List<Job> failExpiredLeases(Instant now);
         Optional<Job> claim(Lease lease);
         boolean complete(UUID id, UUID token, UUID reportId, Instant now);
         boolean fail(UUID id, UUID token, String code, String message, Instant retryAt, Instant now);
