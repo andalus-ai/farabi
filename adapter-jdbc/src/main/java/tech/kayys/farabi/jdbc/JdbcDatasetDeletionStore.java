@@ -76,16 +76,23 @@ public final class JdbcDatasetDeletionStore implements Store {
         try(Connection c=source.getConnection()){
             c.setAutoCommit(false);
             try{
-                UUID dataset;String workspace;
-                try(PreparedStatement p=c.prepareStatement("SELECT dataset_id,workspace_id FROM farabi_dataset_deletions WHERE id=? AND status='RUNNING' AND lease_token=? AND lease_until>? FOR UPDATE")){
+                UUID dataset;String workspace;long bytes;
+                try(PreparedStatement p=c.prepareStatement("SELECT d.dataset_id,d.workspace_id,ds.storage_bytes FROM farabi_dataset_deletions d JOIN farabi_datasets ds ON ds.id=d.dataset_id AND ds.workspace_id=d.workspace_id WHERE d.id=? AND d.status='RUNNING' AND d.lease_token=? AND d.lease_until>? FOR UPDATE OF d,ds")){
                     p.setObject(1,id);p.setObject(2,token);p.setTimestamp(3,Timestamp.from(now));
-                    try(ResultSet r=p.executeQuery()){if(!r.next()){c.rollback();return false;}dataset=r.getObject(1,UUID.class);workspace=r.getString(2);}
+                    try(ResultSet r=p.executeQuery()){if(!r.next()){c.rollback();return false;}dataset=r.getObject(1,UUID.class);workspace=r.getString(2);bytes=r.getLong(3);}
                 }
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_dataset_deletions SET status='SUCCEEDED',lease_owner=NULL,lease_token=NULL,lease_until=NULL,updated_at=? WHERE id=?")){
                     p.setTimestamp(1,Timestamp.from(now));p.setObject(2,id);p.executeUpdate();
                 }
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_datasets SET lifecycle='ARCHIVED',deleted_at=?,updated_at=? WHERE id=? AND workspace_id=?")){
                     p.setTimestamp(1,Timestamp.from(now));p.setTimestamp(2,Timestamp.from(now));p.setObject(3,dataset);p.setString(4,workspace);p.executeUpdate();
+                }
+                try(PreparedStatement p=c.prepareStatement("UPDATE farabi_workspace_storage SET used_bytes=used_bytes-?,updated_at=? WHERE workspace_id=? AND used_bytes>=?")){
+                    p.setLong(1,bytes);p.setTimestamp(2,Timestamp.from(now));p.setString(3,workspace);p.setLong(4,bytes);
+                    if(p.executeUpdate()!=1)throw new IllegalStateException("workspace storage usage ledger is inconsistent");
+                }
+                try(PreparedStatement p=c.prepareStatement("UPDATE farabi_storage_reservations SET status='RELEASED',updated_at=? WHERE dataset_id=? AND workspace_id=? AND status='COMMITTED'")){
+                    p.setTimestamp(1,Timestamp.from(now));p.setObject(2,dataset);p.setString(3,workspace);p.executeUpdate();
                 }
                 c.commit();return true;
             }catch(Exception e){c.rollback();if(e instanceof RuntimeException re)throw re;throw new IllegalStateException(e);}
