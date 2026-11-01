@@ -19,7 +19,7 @@ CREATE TABLE farabi_storage_cleanup_plan_items (
     plan_id UUID NOT NULL,
     workspace_id VARCHAR(200) NOT NULL,
     item_index INTEGER NOT NULL CHECK (item_index >= 0),
-    location_ref VARCHAR(2000) NOT NULL,
+    location_ref VARCHAR(2048) NOT NULL,
     size_bytes BIGINT NOT NULL CHECK (size_bytes >= 0),
     last_modified TIMESTAMPTZ NOT NULL,
     PRIMARY KEY (plan_id, item_index),
