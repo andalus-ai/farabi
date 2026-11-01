@@ -28,6 +28,9 @@ import tech.kayys.farabi.jdbc.JdbcDatasetImportJobStore;
 import tech.kayys.farabi.jdbc.JdbcWorkspaceStorageStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageReconciliationStore;
 import tech.kayys.farabi.engine.DatasetStorageReconciliationService;
+import tech.kayys.farabi.engine.DatasetStorageInventoryService;
+import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.Inventory;
+import tech.kayys.farabi.jdbc.JdbcDatasetStorageReferenceStore;
 import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
 
 /** CDI wiring for the durable import worker. Upload intake is supplied by the API edge. */
@@ -51,6 +54,18 @@ public class DatasetImportWorkerBeans {
     @Produces @Singleton
     DatasetStorageReconciliationService storageReconciliationService(JdbcDatasetStorageReconciliationStore store) {
         return new DatasetStorageReconciliationService(store, Clock.systemUTC());
+    }
+
+    @Produces @Singleton
+    JdbcDatasetStorageReferenceStore datasetStorageReferences(DataSource source) {
+        return new JdbcDatasetStorageReferenceStore(source);
+    }
+
+    @Produces @Singleton
+    DatasetStorageInventoryService datasetStorageInventoryService(
+            JdbcDatasetStorageReferenceStore references, Inventory inventory,
+            @ConfigProperty(name="farabi.import.storage.orphan-grace-period", defaultValue="PT24H") Duration gracePeriod) {
+        return new DatasetStorageInventoryService(references, inventory, Clock.systemUTC(), gracePeriod);
     }
 
     @Produces @Singleton
