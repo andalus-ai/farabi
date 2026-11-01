@@ -21,6 +21,7 @@ import tech.kayys.farabi.engine.DatasetStorageInventoryService.Report;
  * This service has deliberately no delete/apply port.
  */
 public final class DatasetStorageCleanupPreviewService {
+    private static final int MAX_CANDIDATES_PER_PREVIEW = 1000;
     public record Candidate(String locationRef, long sizeBytes, Instant lastModified) {
         public Candidate {
             if (locationRef == null || locationRef.isBlank() || sizeBytes < 0 || lastModified == null)
@@ -75,6 +76,8 @@ public final class DatasetStorageCleanupPreviewService {
             if (object.sizeBytes()!=finding.actualBytes()
                     || !object.lastModified().equals(finding.objectLastModified())
                     || object.lastModified().isAfter(cutoff)) continue;
+            if (candidates.size() >= MAX_CANDIDATES_PER_PREVIEW)
+                throw new IllegalStateException("cleanup preview exceeds the 1000-candidate safety limit");
             candidates.add(new Candidate(object.locationRef(), object.sizeBytes(), object.lastModified()));
         }
         Plan plan=new Plan(UUID.randomUUID(), workspaceId, report.id(), actorId, now, now.plus(planLifetime), candidates);
