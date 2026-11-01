@@ -1,26 +1,32 @@
 # Durable dataset import jobs
 
-Farabi separates upload acceptance from profiling. The API authorizes and stages the source, registers the dataset, then enqueues a durable job. A worker claims the job and invokes the existing profiler port; the request thread does not hold the profiling operation open.
+Farabi separates upload acceptance from profiling. The submission service authorizes the caller and stages the source, then registers the dataset and enqueues its profiling job in one JDBC transaction. The request thread does not hold profiling open.
 
 ## Lifecycle
 
-- `QUEUED`: accepted and waiting for a worker.
+- `QUEUED`: accepted and waiting for a worker or retry backoff to elapse.
 - `RUNNING`: claimed with an expiring lease and a unique fencing token.
 - `SUCCEEDED`: profiling and profile persistence completed.
-- `FAILED`: retry budget exhausted.
+- `FAILED`: retry budget exhausted or a final worker lease expired.
 
-A worker crash leaves a `RUNNING` job whose lease eventually expires. Another worker can reclaim it. Every completion/failure mutation must present the current lease token; stale workers cannot overwrite the result after a reclaim. `attempts` increments on each claim, and failures return to `QUEUED` until `max_attempts` is reached.
+A worker crash leaves a `RUNNING` job whose lease eventually expires. Another worker can reclaim it. Completion, renewal and failure mutations require the current lease token and an unexpired lease. Stale workers cannot overwrite the result after a reclaim. Attempts increment on each claim; profiling failures use bounded exponential backoff (5 seconds up to 15 minutes).
 
-## Idempotency and isolation
+## Atomic submission and idempotency
 
-The idempotency key is unique within a workspace. Repeating an enqueue request returns the original job. Job lookup always includes the workspace identifier. The dataset foreign key prevents orphaned jobs; the workspace remains part of every job read and uniqueness constraint.
+`JdbcDatasetImportJobStore.registerAndEnqueue` inserts the dataset and job in one database transaction. A failure inserting the job rolls back the dataset insert, preventing orphaned registrations. The idempotency key is unique within a workspace; repeating a request returns the original job. The submission service checks the key before staging to avoid unnecessary duplicate uploads in the normal retry path.
 
-## Worker outline
+A narrow race between concurrent first submissions can still stage duplicate temporary objects before the database uniqueness constraint selects the winning job. Staged-object retention/garbage collection should clean such unreferenced uploads.
 
-1. Claim with worker ID, current time and lease expiry.
-2. Load the dataset and staged source through workspace-scoped ports.
+## Worker execution
+
+1. Claim with worker ID, current time and lease expiry using PostgreSQL `FOR UPDATE SKIP LOCKED`.
+2. Resolve the staged source through workspace-scoped dataset metadata.
 3. Profile and persist the profile.
 4. Mark success with the lease token.
-5. On a retryable error, mark failure with the lease token; the store requeues while attempts remain.
+5. On failure, schedule retry using the bounded backoff and the same fencing token.
 
-The JDBC claim uses row locking with `SKIP LOCKED`, suitable for concurrent PostgreSQL workers. Lease duration, heartbeat/renewal, backoff scheduling, dead-letter operations, metrics and API endpoints are follow-up work. The current job store is the persistence primitive, not a complete worker deployment.
+The Quarkus runtime now provides a scheduled polling worker and a separate lease-heartbeat tick. Multiple replicas coordinate through database row locks and lease tokens. Enable the worker explicitly with `FARABI_IMPORT_WORKER_ENABLED=true`; configure polling, heartbeat, lease duration, worker ID and local storage root through the `FARABI_IMPORT_*` environment variables.
+
+## Current deployment boundary
+
+The Quarkus worker currently profiles staged local-file references. Its upload content provider intentionally fails closed until an authenticated upload/API adapter is installed. Local filesystem staging is for development or single-node deployments; production multi-replica deployments should replace it with encrypted shared object storage. HTTP import endpoints, durable object cleanup, dead-letter administration, metrics and production identity-backed authorization remain separate work.
