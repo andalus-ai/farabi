@@ -22,10 +22,11 @@ class DatasetStorageInventoryWorkerTest {
                 "worker-a", token, now.plusSeconds(120), now, null, null, null, now, now);
         final UUID[] completedReport = new UUID[1];
         final UUID[] completedToken = new UUID[1];
+        final boolean[] claimed = new boolean[1];
         DatasetStorageInventoryJobPorts.Store store = new DatasetStorageInventoryJobPorts.Store() {
             public Job enqueue(String w, String k, int m, Instant n) { throw new UnsupportedOperationException(); }
             public Optional<Job> find(UUID i, String w) { return Optional.empty(); }
-            public Optional<Job> claim(Lease lease) { assertEquals("worker-a", lease.workerId()); return Optional.of(job); }
+            public Optional<Job> claim(Lease lease) { assertEquals("worker-a", lease.workerId()); if (claimed[0]) return Optional.empty(); claimed[0] = true; return Optional.of(job); }
             public boolean complete(UUID i, UUID t, UUID report, Instant n) {
                 completedToken[0] = t; completedReport[0] = report; return true;
             }
