@@ -36,6 +36,8 @@ import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.Inventory;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageReferenceStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryReportStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryJobStore;
+import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryAuditLog;
+import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.AuditLog;
 import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
 
 /** CDI wiring for dataset imports and storage inventory workers. */
@@ -58,16 +60,19 @@ public class DatasetImportWorkerBeans {
     @Produces @Singleton JdbcDatasetStorageInventoryJobStore storageInventoryJobStore(DataSource source) {
         return new JdbcDatasetStorageInventoryJobStore(source);
     }
+    @Produces @Singleton JdbcDatasetStorageInventoryAuditLog storageInventoryAuditLog(DataSource source) {
+        return new JdbcDatasetStorageInventoryAuditLog(source);
+    }
     @Produces @Singleton DatasetStorageInventoryService datasetStorageInventoryService(
             JdbcDatasetStorageReferenceStore references, Inventory inventory, JdbcDatasetStorageInventoryReportStore reports,
             @ConfigProperty(name="farabi.import.storage.orphan-grace-period", defaultValue="PT24H") Duration gracePeriod) {
         return new DatasetStorageInventoryService(references, inventory, Clock.systemUTC(), gracePeriod, reports);
     }
     @Produces @Singleton DatasetStorageInventoryWorker datasetStorageInventoryWorker(
-            JdbcDatasetStorageInventoryJobStore jobs, DatasetStorageInventoryService inventory,
+            JdbcDatasetStorageInventoryJobStore jobs, DatasetStorageInventoryService inventory, AuditLog audit,
             @ConfigProperty(name="farabi.storage.inventory.worker-id", defaultValue="farabi-storage-inventory-worker") String workerId,
             @ConfigProperty(name="farabi.storage.inventory.lease-duration", defaultValue="PT2M") Duration leaseDuration) {
-        return new DatasetStorageInventoryWorker(workerId, jobs, inventory, Clock.systemUTC(), leaseDuration);
+        return new DatasetStorageInventoryWorker(workerId, jobs, inventory, Clock.systemUTC(), leaseDuration, audit);
     }
     @Produces @Singleton JdbcWorkspaceStorageStore workspaceStorage(DataSource source,
             @ConfigProperty(name="farabi.import.storage.default-quota-bytes", defaultValue="10737418240") long quotaBytes) {
