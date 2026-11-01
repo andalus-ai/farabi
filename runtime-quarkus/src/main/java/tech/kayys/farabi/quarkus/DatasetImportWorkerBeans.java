@@ -2,6 +2,7 @@ package tech.kayys.farabi.quarkus;
 
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
+import io.quarkus.arc.DefaultBean;
 import jakarta.inject.Singleton;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -10,6 +11,8 @@ import javax.sql.DataSource;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import tech.kayys.farabi.engine.DatasetImportJobPorts.SourceResolver;
 import tech.kayys.farabi.engine.DatasetImportWorker;
+import tech.kayys.farabi.engine.DatasetImportSubmissionService;
+import tech.kayys.farabi.engine.DatasetPorts;
 import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
 import tech.kayys.farabi.jdbc.JdbcDatasetCatalog;
 import tech.kayys.farabi.jdbc.JdbcDatasetImportJobStore;
@@ -35,6 +38,22 @@ public class DatasetImportWorkerBeans {
                 request -> { throw new IllegalStateException("HTTP upload content provider is not configured"); },
                 new LocalFileDatasetAdapter.Limits(512L*1024*1024, 5_000_000, 500, 100_000),
                 Clock.systemUTC());
+    }
+
+    /** Safe default: deployments must provide an explicit source/workspace authorization policy. */
+    @Produces @Singleton @DefaultBean
+    DatasetPorts.Authorizer denyDatasetRegistrationByDefault() {
+        return (workspaceId, subjectId, sourceId) -> {
+            throw new jakarta.ws.rs.ForbiddenException("dataset source registration is not configured");
+        };
+    }
+
+    @Produces @Singleton
+    DatasetImportSubmissionService datasetImportSubmissionService(
+            DatasetPorts.Authorizer authorizer, JdbcDatasetCatalog catalog,
+            LocalFileDatasetAdapter files, JdbcDatasetImportJobStore jobs,
+            @ConfigProperty(name="farabi.import.max-attempts", defaultValue="5") int maxAttempts) {
+        return new DatasetImportSubmissionService(authorizer, catalog, files, jobs, Clock.systemUTC(), maxAttempts);
     }
 
     @Produces @Singleton

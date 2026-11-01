@@ -1,6 +1,7 @@
 package tech.kayys.farabi.engine;
 
 import java.util.UUID;
+import java.io.InputStream;
 import tech.kayys.farabi.engine.DatasetContracts.Format;
 import tech.kayys.farabi.engine.DatasetContracts.Profile;
 
@@ -12,6 +13,15 @@ public final class DatasetImportPorts {
     @FunctionalInterface
     public interface SourceIntake {
         StagedSource stage(ImportRequest request);
+    }
+
+    /** Request-scoped upload stream handoff; implementations must consume and close the stream. */
+    public interface UploadSourceIntake extends SourceIntake {
+        StagedSource stage(ImportRequest request, InputStream content);
+        @Override
+        default StagedSource stage(ImportRequest request) {
+            throw new IllegalStateException("an upload stream is required");
+        }
     }
 
     /** Computes a deterministic profile from the staged source; implementations must enforce resource limits. */
