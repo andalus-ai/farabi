@@ -34,12 +34,6 @@ public final class DatasetImportSubmissionService {
 
     public DatasetImportSubmissionService(DatasetPorts.Authorizer authorizer, DatasetPorts.Catalog catalog,
             DatasetImportPorts.SourceIntake intake, SubmissionStore submissions, Clock clock, int maxAttempts,
-            QuotaStore quota, QuotaSubmissionStore quotaSubmissions) {
-        this(authorizer,catalog,intake,submissions,clock,maxAttempts,quota,quotaSubmissions,null);
-    }
-
-    public DatasetImportSubmissionService(DatasetPorts.Authorizer authorizer, DatasetPorts.Catalog catalog,
-            DatasetImportPorts.SourceIntake intake, SubmissionStore submissions, Clock clock, int maxAttempts,
             QuotaStore quota, QuotaSubmissionStore quotaSubmissions, ObjectStore objects) {
         this.authorizer=Objects.requireNonNull(authorizer);this.catalog=Objects.requireNonNull(catalog);
         this.intake=Objects.requireNonNull(intake);this.submissions=Objects.requireNonNull(submissions);
