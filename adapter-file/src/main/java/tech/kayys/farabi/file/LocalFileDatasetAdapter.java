@@ -31,7 +31,7 @@ import tech.kayys.farabi.engine.DatasetContracts.LogicalType;
 import tech.kayys.farabi.engine.DatasetContracts.Profile;
 import tech.kayys.farabi.engine.DatasetImportPorts.ImportRequest;
 import tech.kayys.farabi.engine.DatasetImportPorts.Profiler;
-import tech.kayys.farabi.engine.DatasetImportPorts.SourceIntake;
+import tech.kayys.farabi.engine.DatasetImportPorts.UploadSourceIntake;
 import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
 
 /**
@@ -39,7 +39,7 @@ import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
  * It is suitable for development/single-node deployments; production deployments should
  * replace it with an encrypted object-storage adapter implementing the same ports.
  */
-public final class LocalFileDatasetAdapter implements SourceIntake, Profiler {
+public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profiler {
     @FunctionalInterface
     public interface ContentProvider {
         InputStream open(ImportRequest request) throws IOException;
@@ -69,6 +69,17 @@ public final class LocalFileDatasetAdapter implements SourceIntake, Profiler {
     @Override
     public StagedSource stage(ImportRequest request) {
         Objects.requireNonNull(request, "request");
+        try {
+            return stage(request, contentProvider.open(request));
+        } catch (IOException e) {
+            throw new IllegalStateException("unable to open dataset upload", e);
+        }
+    }
+
+    @Override
+    public StagedSource stage(ImportRequest request, InputStream content) {
+        Objects.requireNonNull(request, "request");
+        Objects.requireNonNull(content, "content");
         if (!supported(request.format())) throw new IllegalArgumentException("supported formats: CSV, TSV, JSON, JSONL");
         if (request.contentLength() > limits.maxBytes()) throw new IllegalArgumentException("upload exceeds configured byte limit");
         UUID id = UUID.randomUUID();
@@ -85,7 +96,7 @@ public final class LocalFileDatasetAdapter implements SourceIntake, Profiler {
             Files.createDirectories(directory);
             Path temporary = Files.createTempFile(directory, id.toString(), ".part");
             long copied = 0;
-            try (InputStream input = contentProvider.open(request);
+            try (InputStream input = content;
                  OutputStream output = Files.newOutputStream(temporary)) {
                 byte[] buffer = new byte[8192];
                 int read;
