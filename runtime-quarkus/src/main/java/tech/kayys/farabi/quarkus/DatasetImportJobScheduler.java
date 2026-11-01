@@ -17,4 +17,10 @@ public class DatasetImportJobScheduler {
             if (worker.runOne().isEmpty()) return;
         }
     }
+
+    @Scheduled(every="{farabi.import.heartbeat-interval:30s}", concurrentExecution=Scheduled.ConcurrentExecution.SKIP,
+            identity="farabi-dataset-import-heartbeat")
+    void renewLeases() {
+        worker.renewActiveLeases();
+    }
 }
