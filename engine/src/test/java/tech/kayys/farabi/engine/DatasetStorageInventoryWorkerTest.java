@@ -55,4 +55,38 @@ class DatasetStorageInventoryWorkerTest {
         assertEquals(completedReport[0], saved.get(0).id());
         assertFalse(worker.runOne());
     }
+    @Test void auditsExpiredFinalAttemptLeasesBeforeClaimingNewWork() {
+        Instant now = Instant.parse("2026-11-01T00:00:00Z");
+        Job expired = new Job(UUID.randomUUID(), "workspace-a", "request-expired", Status.FAILED,
+                3, 3, null, null, null, now, null, "LEASE_EXHAUSTED",
+                "worker lease expired after final attempt", now, now);
+        final List<DatasetStorageInventoryAuditPorts.Event> events = new java.util.ArrayList<>();
+        DatasetStorageInventoryJobPorts.Store store = new DatasetStorageInventoryJobPorts.Store() {
+            public Job enqueue(String w, String k, int m, Instant n) { throw new UnsupportedOperationException(); }
+            public Optional<Job> find(UUID id, String w) { return Optional.empty(); }
+            public List<Job> failExpiredLeases(Instant at) { assertEquals(now, at); return List.of(expired); }
+            public Optional<Job> claim(Lease lease) { return Optional.empty(); }
+            public boolean complete(UUID id, UUID token, UUID report, Instant at) { return false; }
+            public boolean fail(UUID id, UUID token, String code, String message, Instant retry, Instant at) { return false; }
+        };
+        DatasetStorageInventoryService inventory = new DatasetStorageInventoryService(
+                workspace -> List.of(), new DatasetStorageInventoryPorts.Inventory() {
+                    public Optional<DatasetStorageInventoryPorts.ObjectEntry> inspect(String ref, String workspace) { return Optional.empty(); }
+                    public List<DatasetStorageInventoryPorts.ObjectEntry> list(String workspace) { return List.of(); }
+                }, Clock.fixed(now, ZoneOffset.UTC), Duration.ofHours(24));
+        DatasetStorageInventoryWorker worker = new DatasetStorageInventoryWorker("worker-a", store, inventory,
+                Clock.fixed(now, ZoneOffset.UTC), Duration.ofMinutes(2),
+                new DatasetStorageInventoryAuditPorts.AuditLog() {
+                    public void append(DatasetStorageInventoryAuditPorts.Event event) { events.add(event); }
+                    public List<DatasetStorageInventoryAuditPorts.Event> recent(String workspace, UUID jobId, int limit) { return List.of(); }
+                });
+
+        assertFalse(worker.runOne());
+        assertEquals(1, events.size());
+        assertEquals(DatasetStorageInventoryAuditPorts.EventType.FAILED, events.get(0).type());
+        assertEquals("LEASE_EXHAUSTED", events.get(0).errorCode());
+        assertEquals(3, events.get(0).attempt());
+        assertEquals(expired.id(), events.get(0).jobId());
+    }
+
 }
