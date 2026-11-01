@@ -25,6 +25,8 @@ import tech.kayys.farabi.engine.DatasetPorts;
 import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
 import tech.kayys.farabi.jdbc.JdbcDatasetCatalog;
 import tech.kayys.farabi.jdbc.JdbcDatasetImportJobStore;
+import tech.kayys.farabi.jdbc.JdbcWorkspaceStorageStore;
+import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
 
 /** CDI wiring for the durable import worker. Upload intake is supplied by the API edge. */
 @ApplicationScoped
@@ -37,6 +39,12 @@ public class DatasetImportWorkerBeans {
     @Produces @Singleton
     JdbcDatasetImportJobStore datasetImportJobs(DataSource source) {
         return new JdbcDatasetImportJobStore(source);
+    }
+
+    @Produces @Singleton
+    JdbcWorkspaceStorageStore workspaceStorage(DataSource source,
+            @ConfigProperty(name="farabi.import.storage.default-quota-bytes", defaultValue="10737418240") long quotaBytes) {
+        return new JdbcWorkspaceStorageStore(source, quotaBytes);
     }
 
     @Produces @Singleton @DefaultBean
@@ -60,8 +68,9 @@ public class DatasetImportWorkerBeans {
     DatasetImportSubmissionService datasetImportSubmissionService(
             DatasetPorts.Authorizer authorizer, JdbcDatasetCatalog catalog,
             UploadSourceIntake intake, JdbcDatasetImportJobStore jobs,
-            @ConfigProperty(name="farabi.import.max-attempts", defaultValue="5") int maxAttempts) {
-        return new DatasetImportSubmissionService(authorizer, catalog, intake, jobs, Clock.systemUTC(), maxAttempts);
+            @ConfigProperty(name="farabi.import.max-attempts", defaultValue="5") int maxAttempts,
+            JdbcWorkspaceStorageStore storage, ObjectStore objects) {
+        return new DatasetImportSubmissionService(authorizer, catalog, intake, jobs, Clock.systemUTC(), maxAttempts, storage, jobs, objects);
     }
 
     @Produces @Singleton @IfBuildProperty(name="farabi.import.storage.provider", stringValue="s3")

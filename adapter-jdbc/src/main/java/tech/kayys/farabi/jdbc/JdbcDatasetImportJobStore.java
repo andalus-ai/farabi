@@ -8,7 +8,7 @@ import tech.kayys.farabi.engine.DatasetContracts.Dataset;
 import tech.kayys.farabi.engine.DatasetImportJobPorts.*;
 
 /** PostgreSQL implementation with atomic submission, row-lock claiming and lease fencing. */
-public final class JdbcDatasetImportJobStore implements Store, SubmissionStore {
+public final class JdbcDatasetImportJobStore implements Store, SubmissionStore, tech.kayys.farabi.engine.DatasetStorageAccountingPorts.QuotaSubmissionStore {
     private final DataSource source;
     public JdbcDatasetImportJobStore(DataSource source) { this.source=Objects.requireNonNull(source,"source"); }
 
@@ -46,6 +46,54 @@ public final class JdbcDatasetImportJobStore implements Store, SubmissionStore {
             }catch(RuntimeException e){c.rollback();throw e;}
             finally{c.setAutoCommit(true);}
         }catch(SQLException e){throw new IllegalStateException("atomic dataset submission failed",e);}
+    }
+
+    @Override public Job registerAndEnqueue(Dataset d,NewJob request,UUID reservationId,long actualBytes) {
+        Objects.requireNonNull(d);Objects.requireNonNull(request);Objects.requireNonNull(reservationId);
+        if(actualBytes<0||!d.id().equals(request.datasetId())||!d.workspaceId().equals(request.workspaceId()))
+            throw new IllegalArgumentException("invalid dataset storage accounting request");
+        try(Connection c=source.getConnection()){
+            c.setAutoCommit(false);
+            try{
+                long reserved;
+                try(PreparedStatement p=c.prepareStatement("SELECT reserved_bytes FROM farabi_storage_reservations WHERE id=? AND workspace_id=? AND status='RESERVED' FOR UPDATE")){
+                    p.setObject(1,reservationId);p.setString(2,request.workspaceId());
+                    try(ResultSet r=p.executeQuery()){if(!r.next())throw new IllegalStateException("storage reservation missing or already consumed");reserved=r.getLong(1);}
+                }
+                if(actualBytes>reserved)throw new IllegalArgumentException("actual object size exceeds reserved workspace capacity");
+                try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_datasets(id,workspace_id,name,source_id,format,location_ref,lifecycle,created_at,updated_at,storage_bytes) VALUES(?,?,?,?,?,?,?,?,?,?)")){
+                    p.setObject(1,d.id());p.setString(2,d.workspaceId());p.setString(3,d.name());p.setString(4,d.sourceId());
+                    p.setString(5,d.format().name());p.setString(6,d.locationRef());p.setString(7,d.lifecycle().name());
+                    p.setTimestamp(8,Timestamp.from(d.createdAt()));p.setTimestamp(9,Timestamp.from(d.updatedAt()));p.setLong(10,actualBytes);p.executeUpdate();
+                }
+                UUID jobId=UUID.randomUUID();
+                try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_import_jobs(id,workspace_id,dataset_id,idempotency_key,status,attempts,max_attempts,available_at,created_at,updated_at) VALUES(?,?,?,?,'QUEUED',0,?,?,?,?)")){
+                    p.setObject(1,jobId);p.setString(2,request.workspaceId());p.setObject(3,request.datasetId());p.setString(4,request.idempotencyKey());
+                    p.setInt(5,request.maxAttempts());p.setTimestamp(6,Timestamp.from(request.now()));p.setTimestamp(7,Timestamp.from(request.now()));p.setTimestamp(8,Timestamp.from(request.now()));p.executeUpdate();
+                }
+                try(PreparedStatement p=c.prepareStatement("UPDATE farabi_workspace_storage SET reserved_bytes=reserved_bytes-?,used_bytes=used_bytes+?,updated_at=? WHERE workspace_id=? AND reserved_bytes>=?")){
+                    p.setLong(1,reserved);p.setLong(2,actualBytes);p.setTimestamp(3,Timestamp.from(request.now()));p.setString(4,request.workspaceId());p.setLong(5,reserved);
+                    if(p.executeUpdate()!=1)throw new IllegalStateException("workspace storage ledger is inconsistent");
+                }
+                try(PreparedStatement p=c.prepareStatement("UPDATE farabi_storage_reservations SET status='COMMITTED',dataset_id=?,updated_at=? WHERE id=? AND status='RESERVED'")){
+                    p.setObject(1,d.id());p.setTimestamp(2,Timestamp.from(request.now()));p.setObject(3,reservationId);
+                    if(p.executeUpdate()!=1)throw new IllegalStateException("storage reservation could not be committed");
+                }
+                c.commit();return find(jobId,request.workspaceId()).orElseThrow();
+            }catch(SQLException e){
+                c.rollback();
+                if("23505".equals(e.getSQLState())){
+                    Optional<Job> existing=findByIdempotencyKey(request.workspaceId(),request.idempotencyKey());
+                    if(existing.isPresent()){
+                        new JdbcWorkspaceStorageStore(source,0).releaseReservation(reservationId,request.workspaceId(),request.now());
+                        return existing.get();
+                    }
+                    throw new IllegalStateException("dataset name already exists in workspace",e);
+                }
+                throw new IllegalStateException("atomic dataset submission and storage accounting failed",e);
+            }catch(RuntimeException e){c.rollback();throw e;}
+            finally{c.setAutoCommit(true);}
+        }catch(SQLException e){throw new IllegalStateException("atomic dataset submission and storage accounting failed",e);}
     }
 
     @Override public Job enqueue(NewJob request) {
