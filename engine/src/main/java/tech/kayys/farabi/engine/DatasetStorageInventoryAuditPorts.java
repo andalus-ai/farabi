@@ -17,5 +17,5 @@ public final class DatasetStorageInventoryAuditPorts {
             if (attempt < 0) throw new IllegalArgumentException("attempt cannot be negative");
         }
     }
-    public interface AuditLog { void append(Event event); }
+    public interface AuditLog { void append(Event event); java.util.List<Event> recent(String workspaceId, UUID jobId, int limit); }
 }
