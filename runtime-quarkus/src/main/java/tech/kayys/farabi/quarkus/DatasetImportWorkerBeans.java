@@ -29,6 +29,7 @@ import tech.kayys.farabi.jdbc.JdbcWorkspaceStorageStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageReconciliationStore;
 import tech.kayys.farabi.engine.DatasetStorageReconciliationService;
 import tech.kayys.farabi.engine.DatasetStorageInventoryService;
+import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
 import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.Inventory;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageReferenceStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryReportStore;
@@ -37,6 +38,14 @@ import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
 /** CDI wiring for the durable import worker. Upload intake is supplied by the API edge. */
 @ApplicationScoped
 public class DatasetImportWorkerBeans {
+    /** Deployments must override this fail-closed bean with their operator RBAC policy. */
+    @Produces @Singleton @DefaultBean
+    DatasetStorageOperatorAuthorizer denyStorageOperationsByDefault() {
+        return (subjectId, workspaceId) -> {
+            throw new jakarta.ws.rs.ForbiddenException("storage operator authorization is not configured");
+        };
+    }
+
     @Produces @Singleton
     JdbcDatasetCatalog datasetCatalog(DataSource source) {
         return new JdbcDatasetCatalog(source);
