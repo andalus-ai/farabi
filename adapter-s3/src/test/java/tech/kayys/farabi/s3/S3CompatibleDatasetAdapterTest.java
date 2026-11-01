@@ -19,6 +19,8 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
+import software.amazon.awssdk.services.s3.model.HeadObjectResponse;
 import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
 import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
 import tech.kayys.farabi.engine.DatasetContracts.Format;
@@ -33,6 +35,8 @@ class S3CompatibleDatasetAdapterTest {
         S3Client client = mock(S3Client.class);
         when(client.putObject(any(PutObjectRequest.class), any(RequestBody.class)))
                 .thenReturn(PutObjectResponse.builder().eTag("etag").build());
+        when(client.headObject(any(HeadObjectRequest.class)))
+                .thenReturn(HeadObjectResponse.builder().contentLength(5L).build());
         var adapter = new S3CompatibleDatasetAdapter(client, "farabi-data", temp, 1024,
                 new LocalFileDatasetAdapter.Limits(1024, 100, 20, 100), Clock.systemUTC());
         byte[] bytes = "id\n1\n".getBytes(java.nio.charset.StandardCharsets.UTF_8);
@@ -50,6 +54,7 @@ class S3CompatibleDatasetAdapterTest {
         assertEquals("text/csv", put.contentType());
         assertFalse(put.key().contains("workspace-secret"));
         assertEquals(staged.locationRef(), "s3://farabi-data/" + put.key());
+        assertEquals(5L, staged.sizeBytes());
         assertEquals(64, put.metadata().get("farabi-workspace").length());
         assertEquals("CSV", put.metadata().get("farabi-format"));
     }
