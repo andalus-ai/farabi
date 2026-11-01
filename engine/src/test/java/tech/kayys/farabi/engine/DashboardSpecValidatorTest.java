@@ -63,6 +63,14 @@ class DashboardSpecValidatorTest {
         assertTrue(codes(validator.validate("ws", "alice", spec(longTitle))).contains("TITLE_TOO_LONG"));
     }
 
+    @Test void acceptsTheMaximumSupportedChartCount() {
+        List<ChartSpec> maximum = new ArrayList<>();
+        for (int i = 0; i < DashboardSpecValidator.MAX_CHARTS; i++)
+            maximum.add(chart("c" + i, Kind.KPI, "orders", null, "revenue", null));
+        var result = validator.validate("ws", "alice", new DashboardSpec("T", maximum, DashboardLayouts.flow(maximum)));
+        assertTrue(result.valid(), result.issues().toString());
+    }
+
     @Test void layoutNeverOverlapsForAnyMix() {
         List<ChartSpec> mix = new ArrayList<>();
         Kind[] kinds = {Kind.KPI, Kind.KPI, Kind.BAR, Kind.TABLE, Kind.KPI, Kind.LINE, Kind.PIE, Kind.BAR, Kind.KPI, Kind.TABLE};
