@@ -1,3 +1,6 @@
+ALTER TABLE farabi_storage_reconciliation_reports
+    ADD CONSTRAINT uq_farabi_storage_reconciliation_id_workspace UNIQUE (id, workspace_id);
+
 CREATE TABLE farabi_storage_quota_repair_previews (
     id UUID PRIMARY KEY,
     workspace_id VARCHAR(200) NOT NULL,
