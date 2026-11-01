@@ -14,7 +14,7 @@ Configure:
 - `FARABI_IMPORT_MAX_BYTES`: per-object upload limit; defaults to 512 MiB.
 - `FARABI_IMPORT_TEMP_ROOT`: private local scratch directory used while profiling downloaded objects.
 
-The SDK default credential provider chain is used (workload identity/role credentials are preferred). Do not put access keys in application properties. Path-style access is enabled for compatibility with self-hosted S3 services. The adapter requests server-side AES-256 encryption for every object.
+The SDK default credential provider chain is used (workload identity/role credentials are preferred). Do not put access keys in application properties. Path-style access is enabled for compatibility with self-hosted S3 services. The adapter requests server-side AES-256 encryption and SHA-256 checksum validation for every object.
 
 ## Object layout and isolation
 
@@ -24,6 +24,6 @@ The adapter supports CSV, TSV, JSON and JSONL. Profiling downloads the object to
 
 ## Operational limits
 
-This is an S3 API adapter, not a claim that every vendor has been integration-tested. Validate endpoint, TLS, IAM/bucket policy, encryption behavior and lifecycle rules against the selected provider before production. Configure bucket versioning and lifecycle retention according to data governance requirements. The adapter includes an explicit workspace-scoped delete operation, but automatic orphan cleanup, retention scheduling, checksum audit records, malware scanning, quotas and metrics are not yet implemented.
+This is an S3 API adapter, not a claim that every vendor has been integration-tested. Validate endpoint, TLS, IAM/bucket policy, encryption behavior and lifecycle rules against the selected provider before production. Configure bucket versioning and lifecycle retention according to data governance requirements. The adapter includes an explicit workspace-scoped delete operation, but automatic orphan cleanup, retention scheduling, checksum audit records beyond the object-store checksum, malware scanning, quotas and metrics are not yet implemented.
 
 The default Farabi dataset registration authorizer remains deny-all. S3 credentials do not replace application-level workspace/source authorization.
