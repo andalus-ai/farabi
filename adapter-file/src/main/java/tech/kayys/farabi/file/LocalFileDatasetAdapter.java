@@ -229,8 +229,9 @@ public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profil
 
     @Override
     public Optional<ObjectEntry> inspect(String locationRef, String workspaceId) {
-        StagedSource source = sourceFromReference(locationRef, workspaceId);
-        Path file = resolve(source, workspaceId);
+        Optional<StagedSource> source = sourceFromReference(locationRef, workspaceId);
+        if (source.isEmpty()) return Optional.empty();
+        Path file = resolve(source.get(), workspaceId);
         try {
             return Optional.of(new ObjectEntry(locationRef, Files.size(file),
                     Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toInstant()));
@@ -265,7 +266,7 @@ public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profil
         }
     }
 
-    private StagedSource sourceFromReference(String ref, String workspaceId) {
+    private Optional<StagedSource> sourceFromReference(String ref, String workspaceId) {
         if (ref == null || workspaceId == null || workspaceId.isBlank())
             throw new IllegalArgumentException("object reference and workspace required");
         String[] parts = ref.split(":", 3);
@@ -275,20 +276,15 @@ public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profil
         Path directory = workspaceDirectory(workspaceId);
         if (Files.isSymbolicLink(root) || Files.isSymbolicLink(directory))
             throw new SecurityException("symbolic links are not permitted in dataset storage");
-        try (var paths = Files.list(directory)) {
-            // Existence is checked by resolve; this only validates the identifier and workspace scope.
-        } catch (IOException | java.nio.file.NoSuchFileException ignored) {
-            // An absent workspace directory means the referenced object is absent.
-        }
-        String fileName = parts[2] + ".";
-        Format format = null;
         for (Format candidate : List.of(Format.CSV, Format.TSV, Format.JSON, Format.JSONL)) {
-            if (Files.exists(directory.resolve(parts[2] + extension(candidate)), LinkOption.NOFOLLOW_LINKS)) {
-                format = candidate; break;
+            Path candidatePath = directory.resolve(parts[2] + extension(candidate));
+            if (Files.exists(candidatePath, LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isSymbolicLink(candidatePath) || !Files.isRegularFile(candidatePath, LinkOption.NOFOLLOW_LINKS))
+                    throw new SecurityException("dataset object is not a regular file");
+                return Optional.of(new StagedSource(candidate, ref));
             }
         }
-        if (format == null) throw new java.nio.file.NoSuchFileException(ref);
-        return new StagedSource(format, ref);
+        return Optional.empty();
     }
 
     private static String extension(Format format) {
