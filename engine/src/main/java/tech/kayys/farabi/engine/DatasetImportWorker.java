@@ -4,6 +4,8 @@ import java.time.Clock;
 import java.time.Duration;
 import java.util.Objects;
 import java.util.Optional;
+import java.util.Map;
+import java.util.concurrent.ConcurrentHashMap;
 import tech.kayys.farabi.engine.DatasetContracts.Profile;
 import tech.kayys.farabi.engine.DatasetImportJobPorts.*;
 
@@ -16,6 +18,7 @@ public final class DatasetImportWorker {
     private final DatasetImportPorts.Profiler profiler;
     private final Clock clock;
     private final Duration leaseDuration;
+    private final Map<java.util.UUID, Job> activeJobs = new ConcurrentHashMap<>();
 
     public DatasetImportWorker(String workerId,Store jobs,DatasetPorts.Catalog catalog,
             SourceResolver sources,DatasetImportPorts.Profiler profiler,Clock clock,Duration leaseDuration) {
@@ -32,6 +35,7 @@ public final class DatasetImportWorker {
         Optional<Job> claimed=jobs.claim(new Lease(workerId,now,now.plus(leaseDuration)));
         if(claimed.isEmpty())return Optional.empty();
         Job job=claimed.get();
+        activeJobs.put(job.id(),job);
         try {
             var dataset=catalog.find(job.datasetId(),job.workspaceId())
                     .orElseThrow(()->new IllegalStateException("dataset not found in workspace"));
@@ -45,8 +49,21 @@ public final class DatasetImportWorker {
             var failedAt=clock.instant();
             long delaySeconds=Math.min(900L,5L << Math.min(8,Math.max(0,job.attempts()-1)));
             jobs.fail(job.id(),job.leaseToken(),"PROFILE_FAILED",safeMessage(e),failedAt.plusSeconds(delaySeconds),failedAt);
+        } finally {
+            activeJobs.remove(job.id());
         }
         return Optional.of(job.id());
+    }
+
+    /** Called by a separate scheduler tick to keep long-running profiles leased. */
+    public int renewActiveLeases() {
+        var now=clock.instant();
+        int renewed=0;
+        for (Job job : activeJobs.values()) {
+            if (jobs.renew(job.id(),job.leaseToken(),now.plus(leaseDuration),now)) renewed++;
+            else activeJobs.remove(job.id(),job);
+        }
+        return renewed;
     }
 
     private static String safeMessage(Exception e) {
