@@ -51,10 +51,12 @@ public final class DatasetImportPorts {
         }
     }
 
-    public record StagedSource(Format format, String locationRef) {
+    public record StagedSource(Format format, String locationRef, long sizeBytes) {
+        public StagedSource(Format format, String locationRef) { this(format, locationRef, -1); }
         public StagedSource {
             if (format == null) throw new IllegalArgumentException("format required");
             QueryContracts.required(locationRef, "locationRef");
+            if (sizeBytes < -1) throw new IllegalArgumentException("sizeBytes cannot be less than -1");
         }
     }
 }

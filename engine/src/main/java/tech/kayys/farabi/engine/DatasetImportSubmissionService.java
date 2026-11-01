@@ -11,8 +11,11 @@ import tech.kayys.farabi.engine.DatasetImportJobPorts.*;
 import tech.kayys.farabi.engine.DatasetImportPorts.ImportRequest;
 import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
 import tech.kayys.farabi.engine.DatasetImportPorts.UploadSourceIntake;
+import tech.kayys.farabi.engine.DatasetStorageAccountingPorts.QuotaStore;
+import tech.kayys.farabi.engine.DatasetStorageAccountingPorts.QuotaSubmissionStore;
+import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
 
-/** Authorizes and stages an upload, registers its dataset, then durably queues profiling. */
+/** Authorizes, reserves workspace capacity, stages bytes and atomically registers dataset/job/usage. */
 public final class DatasetImportSubmissionService {
     private final DatasetPorts.Authorizer authorizer;
     private final DatasetPorts.Catalog catalog;
@@ -20,14 +23,27 @@ public final class DatasetImportSubmissionService {
     private final SubmissionStore submissions;
     private final Clock clock;
     private final int maxAttempts;
+    private final QuotaStore quota;
+    private final QuotaSubmissionStore quotaSubmissions;
+    private final ObjectStore objects;
 
     public DatasetImportSubmissionService(DatasetPorts.Authorizer authorizer, DatasetPorts.Catalog catalog,
             DatasetImportPorts.SourceIntake intake, SubmissionStore submissions, Clock clock, int maxAttempts) {
+        this(authorizer,catalog,intake,submissions,clock,maxAttempts,null,null,null);
+    }
+
+    public DatasetImportSubmissionService(DatasetPorts.Authorizer authorizer, DatasetPorts.Catalog catalog,
+            DatasetImportPorts.SourceIntake intake, SubmissionStore submissions, Clock clock, int maxAttempts,
+            QuotaStore quota, QuotaSubmissionStore quotaSubmissions, ObjectStore objects) {
         this.authorizer=Objects.requireNonNull(authorizer);this.catalog=Objects.requireNonNull(catalog);
         this.intake=Objects.requireNonNull(intake);this.submissions=Objects.requireNonNull(submissions);
         this.clock=Objects.requireNonNull(clock);
         if(maxAttempts<1)throw new IllegalArgumentException("maxAttempts must be positive");
-        this.maxAttempts=maxAttempts;
+        if ((quota == null) != (quotaSubmissions == null))
+            throw new IllegalArgumentException("quota and quota-aware submission store must be configured together");
+        if (quota != null && objects == null)
+            throw new IllegalArgumentException("quota-enabled submissions require an object cleanup port");
+        this.maxAttempts=maxAttempts;this.quota=quota;this.quotaSubmissions=quotaSubmissions;this.objects=objects;
     }
 
     public Submission submit(ImportRequest request,String idempotencyKey) {
@@ -54,22 +70,48 @@ public final class DatasetImportSubmissionService {
                     .orElseThrow(()->new IllegalStateException("idempotent import job references missing dataset"));
             return new Submission(existingDataset,existing.get());
         }
-        StagedSource staged;
-        if (content == null) {
-            staged=Objects.requireNonNull(intake.stage(request),"staged source");
-        } else {
-            if (!(intake instanceof UploadSourceIntake uploadIntake)) {
-                throw new IllegalStateException("configured source intake does not accept upload streams");
+
+        UUID reservationId = quota == null ? null : UUID.randomUUID();
+        if (quota != null) quota.reserve(request.workspaceId(), reservationId,
+                Math.max(1L, request.contentLength()), clock.instant());
+        boolean committed = false;
+        StagedSource staged = null;
+        try {
+            if (content == null) {
+                staged=Objects.requireNonNull(intake.stage(request),"staged source");
+            } else {
+                if (!(intake instanceof UploadSourceIntake uploadIntake)) {
+                    throw new IllegalStateException("configured source intake does not accept upload streams");
+                }
+                staged=Objects.requireNonNull(uploadIntake.stage(request,content),"staged source");
             }
-            staged=Objects.requireNonNull(uploadIntake.stage(request,content),"staged source");
+            var now=clock.instant();
+            Dataset dataset=new Dataset(UUID.randomUUID(),request.workspaceId(),request.name(),request.sourceId(),
+                    staged.format(),staged.locationRef(),Lifecycle.REGISTERED,now,now);
+            NewJob newJob=new NewJob(request.workspaceId(),dataset.id(),idempotencyKey,maxAttempts,now);
+            Job job;
+            if (quota != null) {
+                if (staged.sizeBytes() < 0) throw new IllegalStateException("storage adapter did not report verified object size");
+                job=quotaSubmissions.registerAndEnqueue(dataset,newJob,reservationId,staged.sizeBytes());
+                committed=true;
+                if (!job.datasetId().equals(dataset.id())) deleteUncommittedObject(staged,request.workspaceId());
+            } else {
+                job=submissions.registerAndEnqueue(dataset,newJob);
+            }
+            Dataset committedDataset=catalog.find(job.datasetId(),request.workspaceId())
+                    .orElseThrow(()->new IllegalStateException("committed import dataset is missing"));
+            return new Submission(committedDataset,job);
+        } finally {
+            try {
+                if (!committed && staged != null) deleteUncommittedObject(staged,request.workspaceId());
+            } finally {
+                if (quota != null && !committed) quota.releaseReservation(reservationId,request.workspaceId(),clock.instant());
+            }
         }
-        var now=clock.instant();
-        Dataset dataset=new Dataset(UUID.randomUUID(),request.workspaceId(),request.name(),request.sourceId(),
-                staged.format(),staged.locationRef(),Lifecycle.REGISTERED,now,now);
-        Job job=submissions.registerAndEnqueue(dataset,new NewJob(request.workspaceId(),dataset.id(),idempotencyKey,maxAttempts,now));
-        Dataset committed=catalog.find(job.datasetId(),request.workspaceId())
-                .orElseThrow(()->new IllegalStateException("committed import dataset is missing"));
-        return new Submission(committed,job);
+    }
+
+    private void deleteUncommittedObject(StagedSource staged,String workspaceId) {
+        if (objects != null) objects.delete(staged.locationRef(),workspaceId);
     }
 
     public record Submission(Dataset dataset,Job job) {

@@ -3,6 +3,15 @@ package tech.kayys.farabi.quarkus;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Produces;
 import io.quarkus.arc.DefaultBean;
+import io.quarkus.arc.properties.IfBuildProperty;
+import java.net.URI;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.S3Configuration;
+import tech.kayys.farabi.engine.DatasetImportPorts.UploadSourceIntake;
+import tech.kayys.farabi.engine.DatasetImportPorts.Profiler;
+import tech.kayys.farabi.s3.S3CompatibleDatasetAdapter;
+import tech.kayys.farabi.file.LocalFileDatasetAdapter;
 import jakarta.inject.Singleton;
 import java.nio.file.Path;
 import java.time.Clock;
@@ -16,7 +25,8 @@ import tech.kayys.farabi.engine.DatasetPorts;
 import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
 import tech.kayys.farabi.jdbc.JdbcDatasetCatalog;
 import tech.kayys.farabi.jdbc.JdbcDatasetImportJobStore;
-import tech.kayys.farabi.file.LocalFileDatasetAdapter;
+import tech.kayys.farabi.jdbc.JdbcWorkspaceStorageStore;
+import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
 
 /** CDI wiring for the durable import worker. Upload intake is supplied by the API edge. */
 @ApplicationScoped
@@ -32,6 +42,12 @@ public class DatasetImportWorkerBeans {
     }
 
     @Produces @Singleton
+    JdbcWorkspaceStorageStore workspaceStorage(DataSource source,
+            @ConfigProperty(name="farabi.import.storage.default-quota-bytes", defaultValue="10737418240") long quotaBytes) {
+        return new JdbcWorkspaceStorageStore(source, quotaBytes);
+    }
+
+    @Produces @Singleton @DefaultBean
     LocalFileDatasetAdapter localDatasetFiles(
             @ConfigProperty(name="farabi.import.storage.root", defaultValue="/var/lib/farabi/datasets") String root) {
         return new LocalFileDatasetAdapter(Path.of(root),
@@ -51,9 +67,30 @@ public class DatasetImportWorkerBeans {
     @Produces @Singleton
     DatasetImportSubmissionService datasetImportSubmissionService(
             DatasetPorts.Authorizer authorizer, JdbcDatasetCatalog catalog,
-            LocalFileDatasetAdapter files, JdbcDatasetImportJobStore jobs,
-            @ConfigProperty(name="farabi.import.max-attempts", defaultValue="5") int maxAttempts) {
-        return new DatasetImportSubmissionService(authorizer, catalog, files, jobs, Clock.systemUTC(), maxAttempts);
+            UploadSourceIntake intake, JdbcDatasetImportJobStore jobs,
+            @ConfigProperty(name="farabi.import.max-attempts", defaultValue="5") int maxAttempts,
+            JdbcWorkspaceStorageStore storage, ObjectStore objects) {
+        return new DatasetImportSubmissionService(authorizer, catalog, intake, jobs, Clock.systemUTC(), maxAttempts, storage, jobs, objects);
+    }
+
+    @Produces @Singleton @IfBuildProperty(name="farabi.import.storage.provider", stringValue="s3")
+    S3Client datasetS3Client(
+            @ConfigProperty(name="farabi.import.s3.region", defaultValue="ap-southeast-1") String region,
+            @ConfigProperty(name="farabi.import.s3.endpoint", defaultValue="") String endpoint) {
+        var builder = S3Client.builder().region(Region.of(region))
+                .serviceConfiguration(S3Configuration.builder().pathStyleAccessEnabled(true).build());
+        if (endpoint != null && !endpoint.isBlank()) builder.endpointOverride(URI.create(endpoint));
+        return builder.build();
+    }
+
+    @Produces @Singleton @IfBuildProperty(name="farabi.import.storage.provider", stringValue="s3")
+    S3CompatibleDatasetAdapter s3DatasetAdapter(
+            S3Client client,
+            @ConfigProperty(name="farabi.import.s3.bucket") String bucket,
+            @ConfigProperty(name="farabi.import.storage.temp-root", defaultValue="/var/tmp/farabi-datasets") String tempRoot,
+            @ConfigProperty(name="farabi.import.max-bytes", defaultValue="536870912") long maxBytes) {
+        return new S3CompatibleDatasetAdapter(client, bucket, Path.of(tempRoot), maxBytes,
+                new LocalFileDatasetAdapter.Limits(maxBytes, 5_000_000, 500, 100_000), Clock.systemUTC());
     }
 
     @Produces @Singleton
@@ -63,9 +100,9 @@ public class DatasetImportWorkerBeans {
 
     @Produces @Singleton
     DatasetImportWorker datasetImportWorker(JdbcDatasetImportJobStore jobs, JdbcDatasetCatalog catalog,
-            SourceResolver resolver, LocalFileDatasetAdapter files,
+            SourceResolver resolver, Profiler profiler,
             @ConfigProperty(name="farabi.import.worker.id", defaultValue="farabi-quarkus-worker") String workerId,
             @ConfigProperty(name="farabi.import.lease-duration", defaultValue="PT2M") Duration leaseDuration) {
-        return new DatasetImportWorker(workerId, jobs, catalog, resolver, files, Clock.systemUTC(), leaseDuration);
+        return new DatasetImportWorker(workerId, jobs, catalog, resolver, profiler, Clock.systemUTC(), leaseDuration);
     }
 }

@@ -118,7 +118,7 @@ public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profil
             } catch (AtomicMoveNotSupportedException e) {
                 Files.move(temporary, target);
             }
-            return new StagedSource(request.format(), "local-file:" + request.workspaceId() + ":" + id);
+            return new StagedSource(request.format(), "local-file:" + request.workspaceId() + ":" + id, copied);
         } catch (IOException e) {
             throw new IllegalStateException("unable to stage dataset upload", e);
         }
@@ -208,6 +208,16 @@ public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profil
             else values.put(name, parser.getValueAsString());
         }
         return values;
+    }
+
+    /** Removes an ephemeral local staging copy after a delegated profile operation. */
+    public void deleteStaged(StagedSource source, String workspaceId) {
+        Path file = resolve(source, workspaceId);
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            throw new IllegalStateException("unable to remove temporary staged dataset", e);
+        }
     }
 
     private Path resolve(StagedSource source, String workspaceId) {

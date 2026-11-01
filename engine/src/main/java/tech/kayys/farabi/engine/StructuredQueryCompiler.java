@@ -16,7 +16,6 @@ import tech.kayys.farabi.engine.VisualizationContracts.*;
 public final class StructuredQueryCompiler {
     public static final int DEFAULT_LIMIT = 500;
     public static final int MAX_LIMIT = 1000;
-    public static final int MAX_FILTERS = 16;
     private static final Pattern SAFE_TEXT = Pattern.compile("[\\p{L}\\p{N} _.:/-]{1,64}");
 
     public record Query(String datasetId, String measureId, List<String> dimensions, List<Filter> filters, int limit) {
@@ -25,7 +24,6 @@ public final class StructuredQueryCompiler {
             QueryContracts.required(measureId, "measureId");
             dimensions = List.copyOf(Objects.requireNonNull(dimensions));
             filters = List.copyOf(Objects.requireNonNull(filters));
-            if (filters.size() > MAX_FILTERS) throw new IllegalArgumentException("at most " + MAX_FILTERS + " filters");
             if (dimensions.size() > 2) throw new IllegalArgumentException("at most two dimensions");
             if (new HashSet<>(dimensions).size() != dimensions.size()) throw new IllegalArgumentException("duplicate dimension");
             if (limit < 1 || limit > MAX_LIMIT) throw new IllegalArgumentException("limit must be 1.." + MAX_LIMIT);
@@ -53,7 +51,7 @@ public final class StructuredQueryCompiler {
 
         String aggregate = measure.aggregation() + "(" + quote(measure.column()) + ")";
         StringBuilder sql = new StringBuilder("SELECT ");
-        for (Dimension d : dims) sql.append(quote(d.column())).append(" AS ").append(quote(d.id())).append(", ");
+        for (Dimension d : dims) sql.append(expression(d)).append(" AS ").append(quote(d.id())).append(", ");
         sql.append(aggregate).append(" AS ").append(quote(measure.id()));
         sql.append(" FROM ");
         sql.append(String.join(".", Arrays.stream(ds.qualifiedTable().split("\\.")).map(StructuredQueryCompiler::quote).toList()));
@@ -66,14 +64,19 @@ public final class StructuredQueryCompiler {
         if (!predicates.isEmpty()) sql.append(" WHERE ").append(String.join(" AND ", predicates));
 
         if (!dims.isEmpty()) {
-            sql.append(" GROUP BY ").append(String.join(", ", dims.stream().map(d -> quote(d.column())).toList()));
+            sql.append(" GROUP BY ").append(String.join(", ", dims.stream().map(StructuredQueryCompiler::expression).toList()));
             List<String> order = new ArrayList<>();
             if (dims.get(0).type() != DimensionType.TIME) order.add(aggregate + " DESC");
-            for (Dimension d : dims) order.add(quote(d.column()) + " ASC");
+            for (Dimension d : dims) order.add(expression(d) + " ASC");
             sql.append(" ORDER BY ").append(String.join(", ", order));
         }
         sql.append(" LIMIT ").append(q.limit());
         return new Plan(ds.sourceId(), sql.toString());
+    }
+
+    /** Grouping expression; filters always compare the raw column, never the truncated one. */
+    private static String expression(Dimension d) {
+        return d.grain() == null ? quote(d.column()) : "DATE_TRUNC('" + d.grain().name() + "', " + quote(d.column()) + ")";
     }
 
     private static String operator(String op, Dimension d) {

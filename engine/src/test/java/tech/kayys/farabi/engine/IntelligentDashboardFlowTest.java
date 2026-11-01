@@ -29,8 +29,18 @@ class IntelligentDashboardFlowTest {
     private DynamicDashboardService service;
     private LiveDashboardRuntime runtime;
 
+    private final Set<UUID> promoted = new HashSet<>();
+    private boolean failNextSave;
+
+    /** Mirrors the real table: UNIQUE(workspace_id, draft_id, revision). */
     private final DashboardManifests.Repository manifestRepo = new DashboardManifests.Repository() {
-        public void save(Manifest m) { manifestStore.put(m.id(), m); }
+        public void save(Manifest m) {
+            if (failNextSave) { failNextSave = false; throw new IllegalStateException("simulated storage failure"); }
+            boolean duplicate = manifestStore.values().stream().anyMatch(x -> x.workspaceId().equals(m.workspaceId())
+                && x.draftId().equals(m.draftId()) && x.revision() == m.revision());
+            if (duplicate) throw new IllegalStateException("revision already exists");
+            manifestStore.put(m.id(), m);
+        }
         public Optional<Manifest> find(UUID id, String ws) { return Optional.ofNullable(manifestStore.get(id)).filter(m -> m.workspaceId().equals(ws)); }
     };
     private final DynamicDashboardService.DraftRepository draftRepo = new DynamicDashboardService.DraftRepository() {
@@ -155,7 +165,44 @@ class IntelligentDashboardFlowTest {
         assertEquals(2, v2.revision());
         assertEquals(2, manifestStore.size());
         assertEquals(draft.spec(), manifestRepo.find(v1.id(), "ws").orElseThrow().spec(), "published revision 1 must be immutable");
+        assertEquals(v1.draftId(), v2.draftId(), "revisions of one dashboard share a lineage");
         assertEquals(charts.size(), v2.spec().charts().size());
+    }
+
+    @Test void aDraftCanOnlyBePromotedOnce() {
+        var draft = service.propose("ws", "alice", "revenue by region");
+        service.promote(draft.id(), "ws", "alice", draft.digest());
+        var replay = assertThrows(IllegalStateException.class, () -> service.promote(draft.id(), "ws", "alice", draft.digest()));
+        assertEquals("draft already promoted", replay.getMessage());
+        assertEquals(1, manifestStore.size());
+    }
+
+    @Test void concurrentEditsOfTheSameRevisionCannotFork() {
+        var base = service.propose("ws", "alice", "revenue by region");
+        var v1 = service.promote(base.id(), "ws", "alice", base.digest());
+        var editorA = service.editPublished(v1.id(), "ws", "alice");
+        var editorB = service.editPublished(v1.id(), "ws", "alice");
+        assertEquals(2, service.promote(editorA.id(), "ws", "alice", editorA.digest()).revision());
+        assertThrows(IllegalStateException.class, () -> service.promote(editorB.id(), "ws", "alice", editorB.digest()));
+        assertEquals(2, manifestStore.size(), "the stale edit must not create a second revision 2");
+        assertTrue(actions().contains("draft.promotion_failed"));
+    }
+
+    @Test void aFailedPublishReleasesTheDraftSoTheReviewerCanRetry() {
+        var draft = service.propose("ws", "alice", "revenue by region");
+        failNextSave = true;
+        assertThrows(IllegalStateException.class, () -> service.promote(draft.id(), "ws", "alice", draft.digest()));
+        assertTrue(manifestStore.isEmpty());
+        assertEquals(1, service.promote(draft.id(), "ws", "alice", draft.digest()).revision());
+    }
+
+    @Test void sourcesReturningUnexpectedColumnsFailLoudly() {
+        var wrongShape = new LiveDashboardRuntime(manifestRepo, new DashboardSpecValidator(IntelligenceFixtures.model(), IntelligenceFixtures.policy(grants)),
+            new StructuredQueryCompiler(IntelligenceFixtures.model()),
+            (ws, subject, query, plan) -> List.of(Map.of("REVENUE", 1.0)), new InsightEngine(), events::add);
+        var draft = service.propose("ws", "alice", "revenue by region");
+        var ex = assertThrows(IllegalStateException.class, () -> wrongShape.preview(draft.id(), "ws", "alice", draft.spec()));
+        assertTrue(ex.getMessage().startsWith("result shape mismatch"), ex.getMessage());
     }
 
     @Test void untrustedProposalsAreValidatedNotTrusted() {
