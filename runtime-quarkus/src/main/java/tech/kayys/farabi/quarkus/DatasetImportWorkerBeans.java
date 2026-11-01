@@ -37,6 +37,8 @@ import tech.kayys.farabi.jdbc.JdbcDatasetStorageReferenceStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryReportStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryJobStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryAuditLog;
+import tech.kayys.farabi.jdbc.JdbcDatasetStorageCleanupPreviewStore;
+import tech.kayys.farabi.engine.DatasetStorageCleanupPreviewService;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.AuditLog;
 import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
 
@@ -62,6 +64,15 @@ public class DatasetImportWorkerBeans {
     }
     @Produces @Singleton JdbcDatasetStorageInventoryAuditLog storageInventoryAuditLog(DataSource source) {
         return new JdbcDatasetStorageInventoryAuditLog(source);
+    }
+    @Produces @Singleton JdbcDatasetStorageCleanupPreviewStore storageCleanupPreviewStore(DataSource source) {
+        return new JdbcDatasetStorageCleanupPreviewStore(source);
+    }
+    @Produces @Singleton DatasetStorageCleanupPreviewService storageCleanupPreviewService(
+            JdbcDatasetStorageInventoryReportStore reports, JdbcDatasetStorageReferenceStore references,
+            Inventory inventory, JdbcDatasetStorageCleanupPreviewStore plans,
+            @ConfigProperty(name="farabi.storage.cleanup-preview.lifetime", defaultValue="PT15M") Duration lifetime) {
+        return new DatasetStorageCleanupPreviewService(reports, references, inventory, plans, Clock.systemUTC(), lifetime);
     }
     @Produces @Singleton DatasetStorageInventoryService datasetStorageInventoryService(
             JdbcDatasetStorageReferenceStore references, Inventory inventory, JdbcDatasetStorageInventoryReportStore reports,
