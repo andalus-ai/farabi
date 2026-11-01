@@ -4,10 +4,15 @@ import java.sql.Connection;
 import java.sql.PreparedStatement;
 import java.sql.SQLException;
 import java.sql.Timestamp;
+import java.sql.ResultSet;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.UUID;
 import java.util.Objects;
 import javax.sql.DataSource;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.Event;
+import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.EventType;
 
 /** Append-only JDBC audit writer. Duplicate delivery of the same logical event is harmless. */
 public final class JdbcDatasetStorageInventoryAuditLog implements DatasetStorageInventoryAuditPorts.AuditLog {
