@@ -79,7 +79,7 @@ public final class JdbcDatasetCatalog implements Catalog {
     @Override
     public void saveProfile(Profile profile) {
         Objects.requireNonNull(profile, "profile");
-        String parent = "INSERT INTO farabi_dataset_profiles(dataset_id,workspace_id,row_count,profiled_at,profiler_version) VALUES(?,?,?,?,?) ON CONFLICT(dataset_id,workspace_id) DO UPDATE SET row_count=EXCLUDED.row_count,profiled_at=EXCLUDED.profiled_at,profiler_version=EXCLUDED.profiler_version";
+        String update = "UPDATE farabi_dataset_profiles SET row_count=?,profiled_at=?,profiler_version=? WHERE dataset_id=? AND workspace_id=?";\n        String parent = "INSERT INTO farabi_dataset_profiles(dataset_id,workspace_id,row_count,profiled_at,profiler_version) VALUES(?,?,?,?,?)";
         String delete = "DELETE FROM farabi_dataset_profile_columns WHERE dataset_id=? AND workspace_id=?";
         String insert = "INSERT INTO farabi_dataset_profile_columns(dataset_id,workspace_id,ordinal,name,logical_type,nullable,null_count,distinct_count) VALUES(?,?,?,?,?,?,?,?)";
         try (Connection c = source.getConnection()) {
@@ -91,9 +91,18 @@ public final class JdbcDatasetCatalog implements Catalog {
                         if (!r.next()) throw new IllegalArgumentException("dataset not found in workspace");
                     }
                 }
-                try (PreparedStatement p = c.prepareStatement(parent)) {
-                    p.setObject(1, profile.datasetId()); p.setString(2, profile.workspaceId()); p.setLong(3, profile.rowCount());
-                    p.setTimestamp(4, Timestamp.from(profile.profiledAt())); p.setString(5, profile.profilerVersion()); p.executeUpdate();
+                int updated;
+                try (PreparedStatement p = c.prepareStatement(update)) {
+                    p.setLong(1, profile.rowCount()); p.setTimestamp(2, Timestamp.from(profile.profiledAt()));
+                    p.setString(3, profile.profilerVersion()); p.setObject(4, profile.datasetId());
+                    p.setString(5, profile.workspaceId()); updated = p.executeUpdate();
+                }
+                if (updated == 0) {
+                    try (PreparedStatement p = c.prepareStatement(parent)) {
+                        p.setObject(1, profile.datasetId()); p.setString(2, profile.workspaceId());
+                        p.setLong(3, profile.rowCount()); p.setTimestamp(4, Timestamp.from(profile.profiledAt()));
+                        p.setString(5, profile.profilerVersion()); p.executeUpdate();
+                    }
                 }
                 try (PreparedStatement p = c.prepareStatement(delete)) {
                     p.setObject(1, profile.datasetId()); p.setString(2, profile.workspaceId()); p.executeUpdate();
