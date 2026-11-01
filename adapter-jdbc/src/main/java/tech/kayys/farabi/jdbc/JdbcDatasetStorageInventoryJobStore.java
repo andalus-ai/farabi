@@ -34,12 +34,24 @@ public final class JdbcDatasetStorageInventoryJobStore implements DatasetStorage
             p.setString(1,workspace);p.setString(2,key);try(ResultSet r=p.executeQuery()){return r.next()?Optional.of(read(r)):Optional.empty();}
         }
     }
+    @Override public List<Job> failExpiredLeases(Instant now) {
+        String sql = "UPDATE farabi_storage_inventory_jobs SET status='FAILED',lease_owner=NULL,lease_token=NULL,lease_until=NULL,error_code='LEASE_EXHAUSTED',error_message='worker lease expired after final attempt',updated_at=? WHERE status='RUNNING' AND lease_until<=? AND attempts>=max_attempts RETURNING *";
+        try (Connection c=source.getConnection(); PreparedStatement p=c.prepareStatement(sql)) {
+            p.setTimestamp(1, Timestamp.from(now));
+            p.setTimestamp(2, Timestamp.from(now));
+            try (ResultSet rows=p.executeQuery()) {
+                List<Job> failed = new ArrayList<>();
+                while (rows.next()) failed.add(read(rows));
+                return List.copyOf(failed);
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("reap expired storage inventory leases failed", e);
+        }
+    }
+
     @Override public Optional<Job> claim(Lease lease) {
         String select="SELECT id FROM farabi_storage_inventory_jobs WHERE (status='QUEUED' AND available_at<=? AND attempts<max_attempts) OR (status='RUNNING' AND lease_until<=? AND attempts<max_attempts) ORDER BY available_at,created_at LIMIT 1 FOR UPDATE SKIP LOCKED";
         try(Connection c=source.getConnection()){c.setAutoCommit(false);try{
-            try (PreparedStatement exhausted=c.prepareStatement("UPDATE farabi_storage_inventory_jobs SET status='FAILED',lease_owner=NULL,lease_token=NULL,lease_until=NULL,error_code='LEASE_EXHAUSTED',error_message='worker lease expired after final attempt',updated_at=? WHERE status='RUNNING' AND lease_until<=? AND attempts>=max_attempts")) {
-                exhausted.setTimestamp(1, Timestamp.from(lease.now())); exhausted.setTimestamp(2, Timestamp.from(lease.now())); exhausted.executeUpdate();
-            }
             UUID id=null;try(PreparedStatement p=c.prepareStatement(select)){p.setTimestamp(1,Timestamp.from(lease.now()));p.setTimestamp(2,Timestamp.from(lease.now()));try(ResultSet r=p.executeQuery()){if(r.next())id=r.getObject(1,UUID.class);}}
             if(id==null){c.commit();return Optional.empty();}
             UUID token=UUID.randomUUID();
