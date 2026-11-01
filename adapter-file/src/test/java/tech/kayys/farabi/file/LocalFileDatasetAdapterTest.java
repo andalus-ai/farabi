@@ -91,13 +91,7 @@ class LocalFileDatasetAdapterTest {
         assertEquals(staged.locationRef(), inventory.get(0).locationRef());
         assertEquals(csv.getBytes(StandardCharsets.UTF_8).length, inventory.get(0).sizeBytes());
         assertTrue(adapter.inspect(staged.locationRef(), "workspace-a").isPresent());
-        assertTrue(adapter.inspect(staged.locationRef(), "workspace-b").isEmpty()
-                || assertCrossWorkspaceDenied(adapter, staged.locationRef()));
-    }
-
-    private boolean assertCrossWorkspaceDenied(LocalFileDatasetAdapter adapter, String ref) {
-        assertThrows(SecurityException.class, () -> adapter.inspect(ref, "workspace-b"));
-        return true;
+        assertThrows(SecurityException.class, () -> adapter.inspect(staged.locationRef(), "workspace-b"));
     }
 
     private LocalFileDatasetAdapter adapter(String value) {
