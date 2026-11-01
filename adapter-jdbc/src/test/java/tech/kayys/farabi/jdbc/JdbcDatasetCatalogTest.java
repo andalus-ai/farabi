@@ -23,8 +23,8 @@ class JdbcDatasetCatalogTest {
         dataSource = new DriverDataSource(url);
         catalog = new JdbcDatasetCatalog(dataSource);
         try (Connection c = dataSource.getConnection(); Statement s = c.createStatement()) {
-            s.execute("CREATE TABLE farabi_datasets (id UUID PRIMARY KEY, workspace_id VARCHAR(200) NOT NULL, name VARCHAR(300) NOT NULL, source_id VARCHAR(200) NOT NULL, format VARCHAR(40) NOT NULL, location_ref VARCHAR(2000) NOT NULL, lifecycle VARCHAR(40) NOT NULL, created_at TIMESTAMP WITH TIME ZONE NOT NULL, updated_at TIMESTAMP WITH TIME ZONE NOT NULL)");
-            s.execute("CREATE UNIQUE INDEX uq_farabi_dataset_workspace_name ON farabi_datasets(workspace_id, LOWER(name))");
+            s.execute("CREATE TABLE farabi_datasets (id UUID PRIMARY KEY, workspace_id VARCHAR(200) NOT NULL, name VARCHAR(300) NOT NULL, name_key VARCHAR(300) GENERATED ALWAYS AS (LOWER(name)), source_id VARCHAR(200) NOT NULL, format VARCHAR(40) NOT NULL, location_ref VARCHAR(2000) NOT NULL, lifecycle VARCHAR(40) NOT NULL, created_at TIMESTAMP WITH TIME ZONE NOT NULL, updated_at TIMESTAMP WITH TIME ZONE NOT NULL)");
+            s.execute("CREATE UNIQUE INDEX uq_farabi_dataset_workspace_name ON farabi_datasets(workspace_id, name_key)");
             s.execute("CREATE TABLE farabi_dataset_profiles (dataset_id UUID NOT NULL, workspace_id VARCHAR(200) NOT NULL, row_count BIGINT NOT NULL, profiled_at TIMESTAMP WITH TIME ZONE NOT NULL, profiler_version VARCHAR(100) NOT NULL, PRIMARY KEY(dataset_id,workspace_id), FOREIGN KEY(dataset_id) REFERENCES farabi_datasets(id))");
             s.execute("CREATE TABLE farabi_dataset_profile_columns (dataset_id UUID NOT NULL, workspace_id VARCHAR(200) NOT NULL, ordinal INTEGER NOT NULL, name VARCHAR(300) NOT NULL, logical_type VARCHAR(40) NOT NULL, nullable BOOLEAN NOT NULL, null_count BIGINT NOT NULL, distinct_count BIGINT NOT NULL, PRIMARY KEY(dataset_id,workspace_id,ordinal), FOREIGN KEY(dataset_id,workspace_id) REFERENCES farabi_dataset_profiles(dataset_id,workspace_id))");
         }
