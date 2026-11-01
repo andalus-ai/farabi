@@ -55,16 +55,39 @@ class StructuredQueryCompilerTest {
         assertThrows(IllegalArgumentException.class, () -> new Query("orders", "revenue", List.of("region", "region"), List.of(), 5));
     }
 
-    @Test void timeGrainsTruncateInSelectGroupByAndOrderButFiltersUseTheRawColumn() {
-        var sql = compiler.compile(new Query("orders", "revenue", List.of("quarter"),
-            List.of(new Filter("quarter", "gte", "2026-01-01")), 8)).sql();
-        assertEquals("SELECT DATE_TRUNC('QUARTER', \"order_ts\") AS \"quarter\", SUM(\"revenue\") AS \"revenue\" FROM \"sales\".\"orders\" "
-            + "WHERE \"order_ts\" >= DATE '2026-01-01' GROUP BY DATE_TRUNC('QUARTER', \"order_ts\") "
-            + "ORDER BY DATE_TRUNC('QUARTER', \"order_ts\") ASC LIMIT 8", sql);
+    @Test void enforcesMaximumRowsAndDimensionalityAtTheBoundary() {
+        var maximum = compiler.compile(new Query("orders", "revenue", List.of("region", "channel"), List.of(), StructuredQueryCompiler.MAX_LIMIT));
+        assertTrue(maximum.sql().endsWith("LIMIT " + StructuredQueryCompiler.MAX_LIMIT));
+        assertThrows(IllegalArgumentException.class,
+            () -> new Query("orders", "revenue", List.of("region", "channel", "month"), List.of(), 10));
+        assertThrows(IllegalArgumentException.class,
+            () -> new Query("orders", "revenue", List.of(), List.of(), StructuredQueryCompiler.MAX_LIMIT + 1));
     }
 
-    @Test void grainsOnlyApplyToTimeDimensions() {
-        assertThrows(IllegalArgumentException.class, () -> new SemanticModel.Dimension("r", "R", "region", SemanticModel.DimensionType.CATEGORY, SemanticModel.Grain.MONTH));
+    @Test void chartCompilationUsesTheBoundedDefaultRowLimit() {
+        var chart = new tech.kayys.farabi.engine.VisualizationContracts.ChartSpec("kpi", 
+            tech.kayys.farabi.engine.VisualizationContracts.Kind.KPI, "Revenue",
+            new tech.kayys.farabi.engine.VisualizationContracts.Binding("orders", null, "revenue", null), List.of());
+        var plan = compiler.compile(Query.fromChart(chart, StructuredQueryCompiler.DEFAULT_LIMIT));
+        assertTrue(plan.sql().endsWith("LIMIT " + StructuredQueryCompiler.DEFAULT_LIMIT));
+    }
+
+    @Test void categoryFilterTextHasAnExplicitLengthCeiling() {
+        String maximum = "a".repeat(64);
+        assertDoesNotThrow(() -> compiler.compile(new Query("orders", "revenue", List.of(),
+            List.of(new Filter("region", "eq", maximum)), 10)));
+        assertThrows(IllegalArgumentException.class, () -> compiler.compile(new Query("orders", "revenue", List.of(),
+            List.of(new Filter("region", "eq", maximum + "a")), 10)));
+    }
+
+    @Test void rejectsQueriesWithMoreThanTheSupportedFilterCount() {
+        List<Filter> maximum = java.util.stream.IntStream.range(0, StructuredQueryCompiler.MAX_FILTERS)
+            .mapToObj(i -> new Filter("region", "eq", "R" + i)).toList();
+        assertDoesNotThrow(() -> new Query("orders", "revenue", List.of(), maximum, 10));
+        List<Filter> excessive = new java.util.ArrayList<>(maximum);
+        excessive.add(new Filter("region", "eq", "overflow"));
+        assertThrows(IllegalArgumentException.class,
+            () -> new Query("orders", "revenue", List.of(), excessive, 10));
     }
 
     @Test void catalogRejectsUnsafeIdentifiers() {

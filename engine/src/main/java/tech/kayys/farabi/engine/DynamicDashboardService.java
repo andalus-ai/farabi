@@ -18,15 +18,10 @@ import tech.kayys.farabi.engine.VisualizationContracts.DashboardSpec;
 public final class DynamicDashboardService {
     public static final int MAX_PROMPT = 2000;
 
-    /**
-     * {@code lineageId} is shared by every revision of one dashboard (a fresh draft is its own lineage) and becomes the
-     * manifest's {@code draftId}, so the existing UNIQUE(workspace, draft_id, revision) constraint makes concurrent
-     * edits of the same revision fail safely instead of silently forking.
-     */
-    public record DynamicDraft(UUID id, UUID lineageId, String workspaceId, String ownerId, String prompt, DashboardSpec spec,
+    public record DynamicDraft(UUID id, String workspaceId, String ownerId, String prompt, DashboardSpec spec,
                                List<String> assumptions, String proposer, UUID parentManifestId, Instant createdAt, Instant expiresAt) {
         public DynamicDraft {
-            Objects.requireNonNull(id); Objects.requireNonNull(lineageId); QueryContracts.required(workspaceId, "workspaceId"); QueryContracts.required(ownerId, "ownerId");
+            Objects.requireNonNull(id); QueryContracts.required(workspaceId, "workspaceId"); QueryContracts.required(ownerId, "ownerId");
             QueryContracts.required(prompt, "prompt"); Objects.requireNonNull(spec); QueryContracts.required(proposer, "proposer");
             assumptions = List.copyOf(assumptions); Objects.requireNonNull(createdAt); Objects.requireNonNull(expiresAt);
         }
@@ -36,10 +31,6 @@ public final class DynamicDashboardService {
     public interface DraftRepository {
         void save(DynamicDraft draft);
         Optional<DynamicDraft> find(UUID id, String workspaceId);
-        /** Atomic compare-and-set: true only for the first caller. A draft can be promoted once. */
-        boolean markPromoted(UUID id, String workspaceId);
-        /** Releases the claim after a failed publish so the reviewer may retry. */
-        void reopen(UUID id, String workspaceId);
     }
 
     private final SemanticModel model;
@@ -72,7 +63,7 @@ public final class DynamicDashboardService {
         var catalog = model.viewFor(workspaceId, subjectId, policy);
         if (catalog.datasets().isEmpty()) throw new SecurityException("no datasets available");
         Proposal proposal = proposer.propose(new Request(workspaceId, subjectId, prompt, catalog));
-        return store(workspaceId, subjectId, prompt, proposal.spec(), proposal.assumptions(), proposal.proposer(), null, null);
+        return store(workspaceId, subjectId, prompt, proposal.spec(), proposal.assumptions(), proposal.proposer(), null);
     }
 
     /** Conventional-editor entry point: a manifest reopened for editing becomes a draft for the next revision. */

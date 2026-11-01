@@ -1,0 +1,78 @@
+package tech.kayys.farabi.engine;
+
+import java.time.Clock;
+import java.io.InputStream;
+import java.util.Objects;
+import java.util.UUID;
+import java.util.Optional;
+import tech.kayys.farabi.engine.DatasetContracts.Dataset;
+import tech.kayys.farabi.engine.DatasetContracts.Lifecycle;
+import tech.kayys.farabi.engine.DatasetImportJobPorts.*;
+import tech.kayys.farabi.engine.DatasetImportPorts.ImportRequest;
+import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
+import tech.kayys.farabi.engine.DatasetImportPorts.UploadSourceIntake;
+
+/** Authorizes and stages an upload, registers its dataset, then durably queues profiling. */
+public final class DatasetImportSubmissionService {
+    private final DatasetPorts.Authorizer authorizer;
+    private final DatasetPorts.Catalog catalog;
+    private final DatasetImportPorts.SourceIntake intake;
+    private final SubmissionStore submissions;
+    private final Clock clock;
+    private final int maxAttempts;
+
+    public DatasetImportSubmissionService(DatasetPorts.Authorizer authorizer, DatasetPorts.Catalog catalog,
+            DatasetImportPorts.SourceIntake intake, SubmissionStore submissions, Clock clock, int maxAttempts) {
+        this.authorizer=Objects.requireNonNull(authorizer);this.catalog=Objects.requireNonNull(catalog);
+        this.intake=Objects.requireNonNull(intake);this.submissions=Objects.requireNonNull(submissions);
+        this.clock=Objects.requireNonNull(clock);
+        if(maxAttempts<1)throw new IllegalArgumentException("maxAttempts must be positive");
+        this.maxAttempts=maxAttempts;
+    }
+
+    public Submission submit(ImportRequest request,String idempotencyKey) {
+        return submitInternal(request,idempotencyKey,null);
+    }
+
+    /** Submits an HTTP upload using its request-scoped stream; the stream is always closed. */
+    public Submission submit(ImportRequest request,String idempotencyKey,InputStream content) {
+        Objects.requireNonNull(content,"content");
+        try (InputStream upload = content) {
+            return submitInternal(request,idempotencyKey,upload);
+        } catch (java.io.IOException e) {
+            throw new IllegalStateException("unable to close dataset upload stream",e);
+        }
+    }
+
+    private Submission submitInternal(ImportRequest request,String idempotencyKey,InputStream content) {
+        Objects.requireNonNull(request,"request");
+        QueryContracts.required(idempotencyKey,"idempotencyKey");
+        authorizer.authorizeRegistration(request.workspaceId(),request.subjectId(),request.sourceId());
+        Optional<Job> existing=submissions.findByIdempotencyKey(request.workspaceId(),idempotencyKey);
+        if(existing.isPresent()){
+            Dataset existingDataset=catalog.find(existing.get().datasetId(),request.workspaceId())
+                    .orElseThrow(()->new IllegalStateException("idempotent import job references missing dataset"));
+            return new Submission(existingDataset,existing.get());
+        }
+        StagedSource staged;
+        if (content == null) {
+            staged=Objects.requireNonNull(intake.stage(request),"staged source");
+        } else {
+            if (!(intake instanceof UploadSourceIntake uploadIntake)) {
+                throw new IllegalStateException("configured source intake does not accept upload streams");
+            }
+            staged=Objects.requireNonNull(uploadIntake.stage(request,content),"staged source");
+        }
+        var now=clock.instant();
+        Dataset dataset=new Dataset(UUID.randomUUID(),request.workspaceId(),request.name(),request.sourceId(),
+                staged.format(),staged.locationRef(),Lifecycle.REGISTERED,now,now);
+        Job job=submissions.registerAndEnqueue(dataset,new NewJob(request.workspaceId(),dataset.id(),idempotencyKey,maxAttempts,now));
+        Dataset committed=catalog.find(job.datasetId(),request.workspaceId())
+                .orElseThrow(()->new IllegalStateException("committed import dataset is missing"));
+        return new Submission(committed,job);
+    }
+
+    public record Submission(Dataset dataset,Job job) {
+        public Submission {Objects.requireNonNull(dataset);Objects.requireNonNull(job);}
+    }
+}
