@@ -112,7 +112,10 @@ public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Pro
                 try { local.deleteStaged(temporary, workspaceId); }
                 catch (RuntimeException ignored) { /* retained temp files are removed by deployment cleanup */ }
             }
-            try { Files.deleteIfExists(operationRoot); }
+            try {
+                Files.deleteIfExists(operationRoot.resolve(sha256(workspaceId)));
+                Files.deleteIfExists(operationRoot);
+            }
             catch (java.io.IOException ignored) { /* cleanup is best effort */ }
         }
     }
