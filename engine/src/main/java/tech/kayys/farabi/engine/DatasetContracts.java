@@ -14,7 +14,7 @@ public final class DatasetContracts {
     }
 
     public enum Lifecycle {
-        REGISTERED, PROFILING, PROFILED, PROFILE_FAILED, ARCHIVED
+        REGISTERED, PROFILING, PROFILED, PROFILE_FAILED, DELETE_PENDING, ARCHIVED
     }
 
     public enum LogicalType {
