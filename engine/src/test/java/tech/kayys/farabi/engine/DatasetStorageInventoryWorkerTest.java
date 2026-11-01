@@ -26,6 +26,7 @@ class DatasetStorageInventoryWorkerTest {
         DatasetStorageInventoryJobPorts.Store store = new DatasetStorageInventoryJobPorts.Store() {
             public Job enqueue(String w, String k, int m, Instant n) { throw new UnsupportedOperationException(); }
             public Optional<Job> find(UUID i, String w) { return Optional.empty(); }
+            public List<Job> failExpiredLeases(Instant at) { return List.of(); }
             public Optional<Job> claim(Lease lease) { assertEquals("worker-a", lease.workerId()); if (claimed[0]) return Optional.empty(); claimed[0] = true; return Optional.of(job); }
             public boolean complete(UUID i, UUID t, UUID report, Instant n) {
                 completedToken[0] = t; completedReport[0] = report; return true;
