@@ -42,8 +42,14 @@ public final class JdbcWorkspaceStorageStore implements QuotaStore {
     }
 
     @Override public Optional<Usage> usage(String workspace) {
-        try(Connection c=source.getConnection();PreparedStatement p=c.prepareStatement("SELECT quota_bytes,used_bytes,reserved_bytes FROM farabi_workspace_storage WHERE workspace_id=?")){
-            p.setString(1,workspace);try(ResultSet r=p.executeQuery()){return r.next()?Optional.of(new Usage(workspace,r.getLong(1),r.getLong(2),r.getLong(3))):Optional.empty();}
+        if(workspace==null||workspace.isBlank())throw new IllegalArgumentException("workspace required");
+        try(Connection c=source.getConnection()){
+            try(PreparedStatement insert=c.prepareStatement("INSERT INTO farabi_workspace_storage(workspace_id,quota_bytes,used_bytes,reserved_bytes,updated_at) VALUES(?,?,0,0,?) ON CONFLICT(workspace_id) DO NOTHING")){
+                insert.setString(1,workspace);insert.setLong(2,defaultQuotaBytes);insert.setTimestamp(3,Timestamp.from(Instant.now()));insert.executeUpdate();
+            }
+            try(PreparedStatement p=c.prepareStatement("SELECT quota_bytes,used_bytes,reserved_bytes FROM farabi_workspace_storage WHERE workspace_id=?")){
+                p.setString(1,workspace);try(ResultSet r=p.executeQuery()){return r.next()?Optional.of(new Usage(workspace,r.getLong(1),r.getLong(2),r.getLong(3))):Optional.empty();}
+            }
         }catch(SQLException e){throw new IllegalStateException("read workspace storage usage failed",e);}
     }
 
