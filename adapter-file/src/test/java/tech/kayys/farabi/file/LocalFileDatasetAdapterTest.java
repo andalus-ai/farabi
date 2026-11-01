@@ -59,7 +59,7 @@ class LocalFileDatasetAdapterTest {
 
     @Test
     void stagesRequestScopedUploadStreamWithoutUsingGlobalContentProvider() {
-        String csv = "id,name\\n7,Farabi\\n";
+        String csv = "id,name\n7,Farabi\n";
         byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
         var adapter = new LocalFileDatasetAdapter(temp,
                 r -> { throw new AssertionError("request stream must be used"); },
@@ -72,13 +72,13 @@ class LocalFileDatasetAdapterTest {
 
     @Test
     void rejectsRequestStreamWhenActualLengthDiffersFromMultipartLength() {
-        String csv = "id\\n1\\n";
+        String csv = "id\n1\n";
         var adapter = new LocalFileDatasetAdapter(temp,
                 r -> { throw new AssertionError("request stream must be used"); },
                 new LocalFileDatasetAdapter.Limits(1024, 10, 5, 10), Clock.systemUTC());
         var request = request(Format.CSV, csv);
         assertThrows(IllegalArgumentException.class,
-                () -> adapter.stage(request, new ByteArrayInputStream("id\\n".getBytes(StandardCharsets.UTF_8))));
+                () -> adapter.stage(request, new ByteArrayInputStream("id\n".getBytes(StandardCharsets.UTF_8))));
     }
 
     private LocalFileDatasetAdapter adapter(String value) {
