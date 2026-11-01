@@ -11,7 +11,7 @@ public final class DatasetStorageAccountingPorts {
     public record Usage(String workspaceId, long quotaBytes, long usedBytes, long reservedBytes) {
         public Usage {
             QueryContracts.required(workspaceId, "workspaceId");
-            if (quotaBytes < 0 || usedBytes < 0 || reservedBytes < 0 || usedBytes + reservedBytes > quotaBytes)
+            if (quotaBytes < 0 || usedBytes < 0 || reservedBytes < 0 || reservedBytes > quotaBytes || usedBytes > quotaBytes - reservedBytes)
                 throw new IllegalArgumentException("invalid workspace storage usage");
         }
         public long availableBytes() { return quotaBytes - usedBytes - reservedBytes; }
