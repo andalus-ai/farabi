@@ -17,3 +17,14 @@ CREATE INDEX idx_farabi_storage_inventory_audit_workspace
     ON farabi_storage_inventory_audit(workspace_id, occurred_at DESC);
 CREATE INDEX idx_farabi_storage_inventory_audit_job
     ON farabi_storage_inventory_audit(job_id, occurred_at);
+
+-- Enforce append-only semantics even if an application path accidentally issues UPDATE/DELETE.
+CREATE FUNCTION farabi_reject_storage_inventory_audit_mutation()
+RETURNS trigger LANGUAGE plpgsql AS $$
+BEGIN
+    RAISE EXCEPTION 'farabi_storage_inventory_audit is append-only';
+END;
+$$;
+CREATE TRIGGER trg_farabi_storage_inventory_audit_immutable
+    BEFORE UPDATE OR DELETE ON farabi_storage_inventory_audit
+    FOR EACH ROW EXECUTE FUNCTION farabi_reject_storage_inventory_audit_mutation();
