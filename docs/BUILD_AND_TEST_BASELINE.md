@@ -20,7 +20,7 @@ This is a real reactor-level Maven verification, not a documentation-only workfl
 
 ## Test inventory observed in the repository
 
-There are 18 Java test classes matching `*Test.java` in the checked branch:
+There are now 20 Java test classes matching `*Test.java` in the current implementation branch (up from the original 18-class baseline):
 
 | Module | Test classes |
 | --- | ---: |
@@ -28,10 +28,10 @@ There are 18 Java test classes matching `*Test.java` in the checked branch:
 | `adapter-jdbc` | 1 |
 | `adapter-dremio` | 2 |
 | `runtime-core` | 0 |
-| `runtime-quarkus` | 0 |
-| **Total** | **18** |
+| `runtime-quarkus` | 2 |
+| **Total** | **20** |
 
-The inventory is based on source paths, not a Surefire test-case count. The successful Maven verification confirms the configured lifecycle completed; it does not, by itself, establish integration coverage against live Numou, Andalus Runtime, Toba, or production identity providers.
+The inventory is based on source paths, not a Surefire test-case count. The two new Quarkus-module test classes cover dashboard delivery identity/status handling and deny-by-default governance wiring. The expanded engine dashboard runtime tests cover authorization-before-fetch, workspace-scoped manifest lookup, row limits, and deduplicated dataset access. CI verification for this increment is pending. The successful Maven verification confirms the configured lifecycle completed; it does not, by itself, establish integration coverage against live Numou, Andalus Runtime, Toba, or production identity providers.
 
 ## What this baseline proves
 
