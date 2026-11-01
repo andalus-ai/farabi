@@ -38,7 +38,7 @@ public final class JdbcDatasetStorageReconciliationStore implements Store {
    p.setString(1,workspace);p.setInt(2,limit);try(ResultSet r=p.executeQuery()){
     List<Report> out=new ArrayList<>();while(r.next()){
      List<Finding> f=new ArrayList<>();String types=r.getString("finding_types");
-     if(types!=null&&!types.isBlank())for(String name:types.split(",")){FindingType t=FindingType.valueOf(name);long ledger=t==FindingType.USED_BYTES_MISMATCH?r.getLong("ledger_used_bytes"):t==FindingType.RESERVED_BYTES_MISMATCH?r.getLong("ledger_reserved_bytes"):r.getLong("observed_used_bytes");long observed=t==FindingType.RESERVED_BYTES_MISMATCH?r.getLong("observed_reserved_bytes"):r.getLong("observed_used_bytes");f.add(new Finding(t,ledger,observed,t.name()));}
+     if(types!=null&&!types.isBlank())for(String name:types.split(",")){FindingType t=FindingType.valueOf(name);long ledger=t==FindingType.USED_BYTES_MISMATCH?r.getLong("ledger_used_bytes"):t==FindingType.RESERVED_BYTES_MISMATCH?r.getLong("ledger_reserved_bytes"):r.getLong("committed_reservation_bytes");long observed=t==FindingType.RESERVED_BYTES_MISMATCH?r.getLong("observed_reserved_bytes"):r.getLong("observed_used_bytes");f.add(new Finding(t,ledger,observed,t.name()));}
      out.add(new Report(r.getObject("id",UUID.class),workspace,r.getTimestamp("inspected_at").toInstant(),r.getLong("quota_bytes"),r.getLong("ledger_used_bytes"),r.getLong("observed_used_bytes"),r.getLong("ledger_reserved_bytes"),r.getLong("observed_reserved_bytes"),r.getLong("committed_reservation_bytes"),f));
     }return List.copyOf(out);
    }
