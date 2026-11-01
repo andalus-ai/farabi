@@ -55,6 +55,31 @@ class StructuredQueryCompilerTest {
         assertThrows(IllegalArgumentException.class, () -> new Query("orders", "revenue", List.of("region", "region"), List.of(), 5));
     }
 
+    @Test void enforcesMaximumRowsAndDimensionalityAtTheBoundary() {
+        var maximum = compiler.compile(new Query("orders", "revenue", List.of("region", "channel"), List.of(), StructuredQueryCompiler.MAX_LIMIT));
+        assertTrue(maximum.sql().endsWith("LIMIT " + StructuredQueryCompiler.MAX_LIMIT));
+        assertThrows(IllegalArgumentException.class,
+            () -> new Query("orders", "revenue", List.of("region", "channel", "month"), List.of(), 10));
+        assertThrows(IllegalArgumentException.class,
+            () -> new Query("orders", "revenue", List.of(), List.of(), StructuredQueryCompiler.MAX_LIMIT + 1));
+    }
+
+    @Test void chartCompilationUsesTheBoundedDefaultRowLimit() {
+        var chart = new tech.kayys.farabi.engine.VisualizationContracts.ChartSpec("kpi", 
+            tech.kayys.farabi.engine.VisualizationContracts.Kind.KPI, "Revenue",
+            new tech.kayys.farabi.engine.VisualizationContracts.Binding("orders", null, "revenue", null), List.of());
+        var plan = compiler.compile(Query.fromChart(chart, StructuredQueryCompiler.DEFAULT_LIMIT));
+        assertTrue(plan.sql().endsWith("LIMIT " + StructuredQueryCompiler.DEFAULT_LIMIT));
+    }
+
+    @Test void categoryFilterTextHasAnExplicitLengthCeiling() {
+        String maximum = "a".repeat(64);
+        assertDoesNotThrow(() -> compiler.compile(new Query("orders", "revenue", List.of(),
+            List.of(new Filter("region", "eq", maximum)), 10)));
+        assertThrows(IllegalArgumentException.class, () -> compiler.compile(new Query("orders", "revenue", List.of(),
+            List.of(new Filter("region", "eq", maximum + "a")), 10)));
+    }
+
     @Test void catalogRejectsUnsafeIdentifiers() {
         assertThrows(IllegalArgumentException.class, () -> new SemanticModel.Measure("m", "M", "revenue); DROP", SemanticModel.Aggregation.SUM));
         assertThrows(IllegalArgumentException.class, () -> new SemanticModel.Dataset("d", "D", "s", "a.b-c", List.of(IntelligenceFixtures.ORDERS.measures().get(0)), List.of()));
