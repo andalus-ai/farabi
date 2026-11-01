@@ -106,8 +106,11 @@ public final class DatasetImportSubmissionService {
                     .orElseThrow(()->new IllegalStateException("committed import dataset is missing"));
             return new Submission(committedDataset,job);
         } finally {
-            if (!committed && staged != null) deleteUncommittedObject(staged,request.workspaceId());
-            if (quota != null && !committed) quota.releaseReservation(reservationId,request.workspaceId(),clock.instant());
+            try {
+                if (!committed && staged != null) deleteUncommittedObject(staged,request.workspaceId());
+            } finally {
+                if (quota != null && !committed) quota.releaseReservation(reservationId,request.workspaceId(),clock.instant());
+            }
         }
     }
 
