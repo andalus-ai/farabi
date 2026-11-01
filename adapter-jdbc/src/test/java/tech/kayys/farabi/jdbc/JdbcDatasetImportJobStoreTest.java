@@ -31,17 +31,27 @@ class JdbcDatasetImportJobStoreTest {
         Job repeated=store.enqueue(new NewJob("ws",dataset,"request-1",2,now.plusSeconds(1)));
         assertEquals(first.id(),repeated.id());
         assertEquals(first.id(),store.findByIdempotencyKey("ws","request-1").orElseThrow().id());
-
         Job claimed=store.claim(new Lease("worker-a",now,now.plusSeconds(30))).orElseThrow();
         assertEquals(Status.RUNNING,claimed.status());
         assertEquals(1,claimed.attempts());
         assertFalse(store.complete(claimed.id(),UUID.randomUUID(),now.plusSeconds(2)));
         assertTrue(store.fail(claimed.id(),claimed.leaseToken(),"TEMPORARY","retry",now.plusSeconds(2)));
         assertEquals(Status.QUEUED,store.find(claimed.id(),"ws").orElseThrow().status());
-
         Job second=store.claim(new Lease("worker-b",now.plusSeconds(3),now.plusSeconds(33))).orElseThrow();
         assertTrue(store.complete(second.id(),second.leaseToken(),now.plusSeconds(4)));
         assertEquals(Status.SUCCEEDED,store.find(second.id(),"ws").orElseThrow().status());
         assertFalse(store.complete(second.id(),second.leaseToken(),now.plusSeconds(5)));
+    }
+
+    private record TestDataSource(String url) implements DataSource {
+        public Connection getConnection() throws SQLException{return DriverManager.getConnection(url);}
+        public Connection getConnection(String user,String password)throws SQLException{return DriverManager.getConnection(url,user,password);}
+        public java.io.PrintWriter getLogWriter(){return null;}
+        public void setLogWriter(java.io.PrintWriter writer){}
+        public void setLoginTimeout(int seconds){}
+        public int getLoginTimeout(){return 0;}
+        public java.util.logging.Logger getParentLogger(){return java.util.logging.Logger.getGlobal();}
+        public <T>T unwrap(Class<T> type)throws SQLException{throw new SQLException("not a wrapper");}
+        public boolean isWrapperFor(Class<?> type){return false;}
     }
 }
