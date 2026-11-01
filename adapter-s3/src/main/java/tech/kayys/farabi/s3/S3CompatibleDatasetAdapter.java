@@ -90,6 +90,9 @@ public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Pro
         if (!object.workspaceHash().equals(head.metadata().get("farabi-workspace"))) {
             throw new SecurityException("object metadata does not match workspace scope");
         }
+        if (!source.format().name().equals(head.metadata().get("farabi-format"))) {
+            throw new IllegalArgumentException("stored object format does not match dataset metadata");
+        }
         long length = head.contentLength();
         if (length > maxBytes) throw new IllegalArgumentException("stored object exceeds configured byte limit");
 
