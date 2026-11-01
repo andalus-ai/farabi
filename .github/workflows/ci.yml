@@ -1,7 +1,7 @@
 name: Farabi CI
 on:
   push:
-    branches: [main]
+    branches: [main, 'feature/**', 'fix/**', 'docs/**']
   pull_request:
 jobs:
   verify:
