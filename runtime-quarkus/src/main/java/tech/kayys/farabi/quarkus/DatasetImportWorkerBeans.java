@@ -26,6 +26,8 @@ import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
 import tech.kayys.farabi.jdbc.JdbcDatasetCatalog;
 import tech.kayys.farabi.jdbc.JdbcDatasetImportJobStore;
 import tech.kayys.farabi.jdbc.JdbcWorkspaceStorageStore;
+import tech.kayys.farabi.jdbc.JdbcDatasetStorageReconciliationStore;
+import tech.kayys.farabi.engine.DatasetStorageReconciliationService;
 import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
 
 /** CDI wiring for the durable import worker. Upload intake is supplied by the API edge. */
@@ -39,6 +41,16 @@ public class DatasetImportWorkerBeans {
     @Produces @Singleton
     JdbcDatasetImportJobStore datasetImportJobs(DataSource source) {
         return new JdbcDatasetImportJobStore(source);
+    }
+
+    @Produces @Singleton
+    JdbcDatasetStorageReconciliationStore storageReconciliationStore(DataSource source) {
+        return new JdbcDatasetStorageReconciliationStore(source);
+    }
+
+    @Produces @Singleton
+    DatasetStorageReconciliationService storageReconciliationService(JdbcDatasetStorageReconciliationStore store) {
+        return new DatasetStorageReconciliationService(store, Clock.systemUTC());
     }
 
     @Produces @Singleton
