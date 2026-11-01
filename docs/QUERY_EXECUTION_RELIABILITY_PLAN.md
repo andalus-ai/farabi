@@ -15,11 +15,12 @@ The present contract is smaller than the reliability model proposed in ADR-009:
 
 - `QueryContracts.Execution` contains identity, workspace/subject/source, provider job ID, status, and timestamps only.
 - `Status` is limited to PENDING, SUBMITTED, RUNNING, SUCCEEDED, FAILED, and CANCELLED.
-- `ExecutionRepository` supports create, workspace-scoped find, and status transition with an optional provider job ID; it has no compare-and-set version, lease, or reconciliation update operation.
+- `ExecutionRepository` supports create, workspace-scoped find, and status transition with an optional provider job ID; it has no compare-and-set version or reconciliation update operation. Worker leasing is a separate `WorkerLeases.Repository` port, with a JDBC implementation backed by the existing V3 lease/fencing columns; do not duplicate that mechanism.
 - `QueryPorts.Executor` accepts a compiled plan and returns a provider job ID; it has no idempotency key, deadline budget, or capability declaration.
 - `QueryLifecycle.Provider` supports status, results, and cancel by provider job ID; it cannot look up an ambiguous submission by correlation key or describe unsupported capabilities.
 - `QueryLifecycleService.cancel` sends a provider cancellation request but does not persist a cancellation-requested event/marker.
-- `DurableQueryService` leaves an ambiguous submit PENDING and documents manual reconciliation. It has no deadline policy or reconciliation worker.
+- `DurableQueryService` leaves an ambiguous submit PENDING and documents manual reconciliation. It has no deadline policy or ambiguous-submission reconciliation by idempotency/correlation key.
+- `QueryPollingWorker` is already present: it claims a fenced worker lease, loads the workspace-scoped execution, and polls provider status only when a provider job ID is known. It can advance known SUBMITTED/RUNNING executions to observed provider states. It is not an ambiguous-submission reconciler: a PENDING execution without a provider job ID is rejected before any provider call.
 - Results are gated on local SUCCEEDED status, and page limits are independently enforced.
 
 The first schema/API change must therefore be additive and coordinated. Do not add a TIMED_OUT terminal status or treat local timeout as proof of remote termination before the remote-outcome model exists.
