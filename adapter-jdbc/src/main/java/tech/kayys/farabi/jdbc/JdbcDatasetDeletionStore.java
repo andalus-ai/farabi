@@ -87,9 +87,11 @@ public final class JdbcDatasetDeletionStore implements Store {
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_datasets SET lifecycle='ARCHIVED',deleted_at=?,updated_at=? WHERE id=? AND workspace_id=?")){
                     p.setTimestamp(1,Timestamp.from(now));p.setTimestamp(2,Timestamp.from(now));p.setObject(3,dataset);p.setString(4,workspace);p.executeUpdate();
                 }
-                try(PreparedStatement p=c.prepareStatement("UPDATE farabi_workspace_storage SET used_bytes=used_bytes-?,updated_at=? WHERE workspace_id=? AND used_bytes>=?")){
-                    p.setLong(1,bytes);p.setTimestamp(2,Timestamp.from(now));p.setString(3,workspace);p.setLong(4,bytes);
-                    if(p.executeUpdate()!=1)throw new IllegalStateException("workspace storage usage ledger is inconsistent");
+                if(bytes>0){
+                    try(PreparedStatement p=c.prepareStatement("UPDATE farabi_workspace_storage SET used_bytes=used_bytes-?,updated_at=? WHERE workspace_id=? AND used_bytes>=?")){
+                        p.setLong(1,bytes);p.setTimestamp(2,Timestamp.from(now));p.setString(3,workspace);p.setLong(4,bytes);
+                        if(p.executeUpdate()!=1)throw new IllegalStateException("workspace storage usage ledger is inconsistent");
+                    }
                 }
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_storage_reservations SET status='RELEASED',updated_at=? WHERE dataset_id=? AND workspace_id=? AND status='COMMITTED'")){
                     p.setTimestamp(1,Timestamp.from(now));p.setObject(2,dataset);p.setString(3,workspace);p.executeUpdate();
