@@ -52,7 +52,7 @@ public final class JdbcDatasetImportJobStore implements Store {
 
     @Override
     public Optional<Job> claim(Lease lease) {
-        String select = "SELECT * FROM farabi_dataset_import_jobs WHERE attempts < max_attempts AND (status='QUEUED' OR (status='RUNNING' AND lease_until <= ?)) ORDER BY created_at,id FOR UPDATE SKIP LOCKED LIMIT 1";
+        String select = "SELECT * FROM farabi_dataset_import_jobs WHERE attempts < max_attempts AND (status='QUEUED' OR (status='RUNNING' AND lease_until <= ?)) ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED";
         String update = "UPDATE farabi_dataset_import_jobs SET status='RUNNING',attempts=attempts+1,lease_owner=?,lease_token=?,lease_until=?,updated_at=?,error_code=NULL,error_message=NULL WHERE id=?";
         try(Connection c=source.getConnection()){
             c.setAutoCommit(false);
