@@ -27,7 +27,7 @@ public final class JdbcDatasetStorageReconciliationStore implements Store {
     if(used!=datasets)f.add(new Finding(FindingType.USED_BYTES_MISMATCH,used,datasets,"ledger used bytes differ from non-archived dataset metadata"));
     if(reserved!=reservations)f.add(new Finding(FindingType.RESERVED_BYTES_MISMATCH,reserved,reservations,"ledger reserved bytes differ from active reservation rows"));
     if(committed!=datasets)f.add(new Finding(FindingType.COMMITTED_RESERVATION_MISMATCH,committed,datasets,"committed reservation bytes differ from non-archived dataset metadata"));
-    Report report=new Report(UUID.randomUUID(),workspace,at,quota,used,datasets,reserved,reservations,f);persist(c,report);return report;
+    Report report=new Report(UUID.randomUUID(),workspace,at,quota,used,datasets,reserved,reservations,committed,f);persist(c,report);return report;
    }
   }catch(SQLException e){throw new IllegalStateException("inspect storage reconciliation failed",e);}
  }
@@ -39,15 +39,15 @@ public final class JdbcDatasetStorageReconciliationStore implements Store {
     List<Report> out=new ArrayList<>();while(r.next()){
      List<Finding> f=new ArrayList<>();String types=r.getString("finding_types");
      if(types!=null&&!types.isBlank())for(String name:types.split(",")){FindingType t=FindingType.valueOf(name);long ledger=t==FindingType.USED_BYTES_MISMATCH?r.getLong("ledger_used_bytes"):t==FindingType.RESERVED_BYTES_MISMATCH?r.getLong("ledger_reserved_bytes"):r.getLong("observed_used_bytes");long observed=t==FindingType.RESERVED_BYTES_MISMATCH?r.getLong("observed_reserved_bytes"):r.getLong("observed_used_bytes");f.add(new Finding(t,ledger,observed,t.name()));}
-     out.add(new Report(r.getObject("id",UUID.class),workspace,r.getTimestamp("inspected_at").toInstant(),r.getLong("quota_bytes"),r.getLong("ledger_used_bytes"),r.getLong("observed_used_bytes"),r.getLong("ledger_reserved_bytes"),r.getLong("observed_reserved_bytes"),f));
+     out.add(new Report(r.getObject("id",UUID.class),workspace,r.getTimestamp("inspected_at").toInstant(),r.getLong("quota_bytes"),r.getLong("ledger_used_bytes"),r.getLong("observed_used_bytes"),r.getLong("ledger_reserved_bytes"),r.getLong("observed_reserved_bytes"),r.getLong("committed_reservation_bytes"),f));
     }return List.copyOf(out);
    }
   }catch(SQLException e){throw new IllegalStateException("read storage reconciliation reports failed",e);}
  }
  private static void persist(Connection c,Report r)throws SQLException{
   String types=r.findings().stream().map(x->x.type().name()).distinct().sorted().reduce((a,b)->a+","+b).orElse("");
-  String sql="INSERT INTO farabi_storage_reconciliation_reports(id,workspace_id,inspected_at,quota_bytes,ledger_used_bytes,observed_used_bytes,ledger_reserved_bytes,observed_reserved_bytes,finding_types) VALUES(?,?,?,?,?,?,?,?,?)";
-  try(PreparedStatement p=c.prepareStatement(sql)){p.setObject(1,r.id());p.setString(2,r.workspaceId());p.setTimestamp(3,Timestamp.from(r.inspectedAt()));p.setLong(4,r.quotaBytes());p.setLong(5,r.ledgerUsedBytes());p.setLong(6,r.observedUsedBytes());p.setLong(7,r.ledgerReservedBytes());p.setLong(8,r.observedReservedBytes());p.setString(9,types);p.executeUpdate();}
+  String sql="INSERT INTO farabi_storage_reconciliation_reports(id,workspace_id,inspected_at,quota_bytes,ledger_used_bytes,observed_used_bytes,ledger_reserved_bytes,observed_reserved_bytes,committed_reservation_bytes,finding_types) VALUES(?,?,?,?,?,?,?,?,?,?)";
+  try(PreparedStatement p=c.prepareStatement(sql)){p.setObject(1,r.id());p.setString(2,r.workspaceId());p.setTimestamp(3,Timestamp.from(r.inspectedAt()));p.setLong(4,r.quotaBytes());p.setLong(5,r.ledgerUsedBytes());p.setLong(6,r.observedUsedBytes());p.setLong(7,r.ledgerReservedBytes());p.setLong(8,r.observedReservedBytes());p.setLong(9,r.committedReservationBytes());p.setString(10,types);p.executeUpdate();}
  }
  private static void required(String s){if(s==null||s.isBlank())throw new IllegalArgumentException("workspace required");}
 }
