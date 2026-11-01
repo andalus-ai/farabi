@@ -42,7 +42,9 @@ public final class DatasetImportWorker {
             catalog.saveProfile(profile);
             jobs.complete(job.id(),job.leaseToken(),clock.instant());
         } catch(Exception e) {
-            jobs.fail(job.id(),job.leaseToken(),"PROFILE_FAILED",safeMessage(e),clock.instant());
+            var failedAt=clock.instant();
+            long delaySeconds=Math.min(900L,5L << Math.min(8,Math.max(0,job.attempts()-1)));
+            jobs.fail(job.id(),job.leaseToken(),"PROFILE_FAILED",safeMessage(e),failedAt.plusSeconds(delaySeconds),failedAt);
         }
         return Optional.of(job.id());
     }
