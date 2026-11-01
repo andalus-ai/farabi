@@ -80,6 +80,16 @@ class StructuredQueryCompilerTest {
             List.of(new Filter("region", "eq", maximum + "a")), 10)));
     }
 
+    @Test void rejectsQueriesWithMoreThanTheSupportedFilterCount() {
+        List<Filter> maximum = java.util.stream.IntStream.range(0, StructuredQueryCompiler.MAX_FILTERS)
+            .mapToObj(i -> new Filter("region", "eq", "R" + i)).toList();
+        assertDoesNotThrow(() -> new Query("orders", "revenue", List.of(), maximum, 10));
+        List<Filter> excessive = new java.util.ArrayList<>(maximum);
+        excessive.add(new Filter("region", "eq", "overflow"));
+        assertThrows(IllegalArgumentException.class,
+            () -> new Query("orders", "revenue", List.of(), excessive, 10));
+    }
+
     @Test void catalogRejectsUnsafeIdentifiers() {
         assertThrows(IllegalArgumentException.class, () -> new SemanticModel.Measure("m", "M", "revenue); DROP", SemanticModel.Aggregation.SUM));
         assertThrows(IllegalArgumentException.class, () -> new SemanticModel.Dataset("d", "D", "s", "a.b-c", List.of(IntelligenceFixtures.ORDERS.measures().get(0)), List.of()));
