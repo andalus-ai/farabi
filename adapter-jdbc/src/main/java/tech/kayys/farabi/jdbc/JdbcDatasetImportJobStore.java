@@ -41,7 +41,8 @@ public final class JdbcDatasetImportJobStore implements Store {
         } catch(SQLException e){ throw new IllegalStateException("find import job failed",e); }
     }
 
-    @Override\n    public Optional<Job> findByIdempotencyKey(String workspaceId,String key) {
+    @Override
+    public Optional<Job> findByIdempotencyKey(String workspaceId,String key) {
         String sql="SELECT * FROM farabi_dataset_import_jobs WHERE workspace_id=? AND idempotency_key=?";
         try(Connection c=source.getConnection();PreparedStatement p=c.prepareStatement(sql)){
             p.setString(1,workspaceId);p.setString(2,key);
