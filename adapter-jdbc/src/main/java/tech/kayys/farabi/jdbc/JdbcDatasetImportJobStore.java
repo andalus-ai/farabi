@@ -27,7 +27,7 @@ public final class JdbcDatasetImportJobStore implements Store {
             return find(id, request.workspaceId()).orElseThrow();
         } catch (SQLException e) {
             if (!"23505".equals(e.getSQLState())) throw new IllegalStateException("enqueue import job failed",e);
-            return findByKey(request.workspaceId(),request.idempotencyKey())
+            return findByIdempotencyKey(request.workspaceId(),request.idempotencyKey())
                     .orElseThrow(() -> new IllegalStateException("idempotency conflict without existing job",e));
         }
     }
@@ -41,7 +41,7 @@ public final class JdbcDatasetImportJobStore implements Store {
         } catch(SQLException e){ throw new IllegalStateException("find import job failed",e); }
     }
 
-    private Optional<Job> findByKey(String workspaceId,String key) {
+    @Override\n    public Optional<Job> findByIdempotencyKey(String workspaceId,String key) {
         String sql="SELECT * FROM farabi_dataset_import_jobs WHERE workspace_id=? AND idempotency_key=?";
         try(Connection c=source.getConnection();PreparedStatement p=c.prepareStatement(sql)){
             p.setString(1,workspaceId);p.setString(2,key);
