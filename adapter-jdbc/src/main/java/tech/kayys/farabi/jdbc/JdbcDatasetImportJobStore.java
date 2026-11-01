@@ -79,6 +79,9 @@ public final class JdbcDatasetImportJobStore implements Store, SubmissionStore {
         try(Connection c=source.getConnection()){
             c.setAutoCommit(false);
             try{
+                try(PreparedStatement expired=c.prepareStatement("UPDATE farabi_dataset_import_jobs SET status='FAILED',lease_owner=NULL,lease_token=NULL,lease_until=NULL,error_code='LEASE_EXPIRED',error_message='Worker lease expired after final attempt',updated_at=? WHERE status='RUNNING' AND attempts >= max_attempts AND lease_until <= ?")){
+                    expired.setTimestamp(1,Timestamp.from(lease.now()));expired.setTimestamp(2,Timestamp.from(lease.now()));expired.executeUpdate();
+                }
                 Job selected;
                 try(PreparedStatement p=c.prepareStatement(select)){
                     p.setTimestamp(1,Timestamp.from(lease.now()));p.setTimestamp(2,Timestamp.from(lease.now()));
