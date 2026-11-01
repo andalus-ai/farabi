@@ -8,10 +8,12 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.UUID;
 import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.DatasetReference;
 import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.DatasetReferences;
 import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.Inventory;
 import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.ObjectEntry;
+import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.Reports;
 
 /** Compares catalog references with provider inventory; detection only, never deletes or repairs. */
 public final class DatasetStorageInventoryService {
@@ -24,9 +26,10 @@ public final class DatasetStorageInventoryService {
                 throw new IllegalArgumentException("invalid inventory finding");
         }
     }
-    public record Report(String workspaceId, Instant inspectedAt, Duration orphanGracePeriod,
+    public record Report(UUID id, String workspaceId, Instant inspectedAt, Duration orphanGracePeriod,
             int catalogObjects, int providerObjects, List<Finding> findings) {
         public Report {
+            Objects.requireNonNull(id);
             if (workspaceId == null || workspaceId.isBlank()) throw new IllegalArgumentException("workspace required");
             Objects.requireNonNull(inspectedAt); Objects.requireNonNull(orphanGracePeriod);
             if (orphanGracePeriod.isNegative() || catalogObjects < 0 || providerObjects < 0)
@@ -40,14 +43,28 @@ public final class DatasetStorageInventoryService {
     private final Inventory inventory;
     private final Clock clock;
     private final Duration orphanGracePeriod;
+    private final Reports reports;
 
     public DatasetStorageInventoryService(DatasetReferences references, Inventory inventory,
             Clock clock, Duration orphanGracePeriod) {
+        this(references, inventory, clock, orphanGracePeriod, null);
+    }
+
+    public DatasetStorageInventoryService(DatasetReferences references, Inventory inventory,
+            Clock clock, Duration orphanGracePeriod, Reports reports) {
         this.references = Objects.requireNonNull(references);
         this.inventory = Objects.requireNonNull(inventory);
         this.clock = Objects.requireNonNull(clock);
         this.orphanGracePeriod = Objects.requireNonNull(orphanGracePeriod);
         if (orphanGracePeriod.isNegative()) throw new IllegalArgumentException("orphan grace period cannot be negative");
+        this.reports = reports;
+    }
+
+    public List<Report> recent(String workspaceId, int limit) {
+        if (workspaceId == null || workspaceId.isBlank()) throw new IllegalArgumentException("workspaceId required");
+        if (limit < 1 || limit > 100) throw new IllegalArgumentException("limit must be between 1 and 100");
+        if (reports == null) throw new IllegalStateException("inventory report persistence is not configured");
+        return reports.recent(workspaceId, limit);
     }
 
     public Report inspect(String workspaceId) {
@@ -81,6 +98,8 @@ public final class DatasetStorageInventoryService {
                         0, object.sizeBytes(), object.lastModified()));
             }
         }
-        return new Report(workspaceId, now, orphanGracePeriod, expected.size(), actual.size(), findings);
+        Report report = new Report(UUID.randomUUID(), workspaceId, now, orphanGracePeriod, expected.size(), actual.size(), findings);
+        if (reports != null) reports.save(report);
+        return report;
     }
 }
