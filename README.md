@@ -19,7 +19,7 @@
 ## Ecosystem dependencies
 See [Ecosystem Dependencies and Integration Boundaries](docs/ECOSYSTEM_DEPENDENCIES.md) for the Numou, Andalus Framework/Runtime, Toba, Batik, and Tenun dependency map, candidate Maven artifacts, runtime compatibility constraints, ownership rules, and integration acceptance gates. These are architectural candidates, not claims of completed integrations.
 
-## Build
+## Statistical intelligence\nSee [Statistical Intelligence and Research Analytics](docs/STATISTICAL_INTELLIGENCE.md) for the data-import-to-research workflow, statistical algorithm catalogue, specialist agent, reproducible execution architecture, and visualization/reporting strategy.\n\n## Build
 Requires Java 21 and Maven 3.9+: `mvn verify`. See the [build and test baseline](docs/BUILD_AND_TEST_BASELINE.md) for the latest verified CI run and current test inventory.
 
 ## Project status
