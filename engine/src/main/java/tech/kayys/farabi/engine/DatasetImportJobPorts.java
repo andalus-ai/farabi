@@ -60,6 +60,7 @@ public final class DatasetImportJobPorts {
     public interface SubmissionStore {
         /** Inserts dataset and job in one database transaction. */
         Job registerAndEnqueue(DatasetContracts.Dataset dataset, NewJob request);
+        Optional<Job> findByIdempotencyKey(String workspaceId, String idempotencyKey);
     }
 
     public interface Store {
