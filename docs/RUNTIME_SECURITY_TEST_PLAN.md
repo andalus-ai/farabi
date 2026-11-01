@@ -1,6 +1,6 @@
 # Runtime Security Test Plan
 
-**Status:** Proposed test plan; no application behavior changed  
+**Status:** Priority 0 test coverage added; CI verification pending. No production application behavior changed  
 **Baseline:** Current `main` branch
 
 This plan closes the current test gap in `runtime-core` and `runtime-quarkus` before Farabi adds external identity, tenancy, or agent-runtime integrations.
@@ -55,6 +55,10 @@ Where the current CDI producer shape makes unsatisfied-bean testing awkward, tes
 3. Add a Quarkus CDI integration test proving missing or ambiguous governed adapters do not yield a readable endpoint.
 4. Add `runtime-core` composition tests for `EmbeddedFarabi` and the durable query ordering guarantees.
 5. Add adversarial tests before enabling Andalus/Numou adapters: spoofed workspace/subject in prompt text, altered dataset IDs, unauthorized fields/filters, and replayed proposal digests.
+
+## Implemented Priority 0 coverage
+
+The initial test increment now covers dashboard authorization-before-fetch, workspace-scoped manifest lookup, invalid row limits, distinct-dataset deduplication, HTTP identity/adapter status mapping, trusted principal propagation, and deny-by-default query/compiler behavior. These tests are committed separately from production code. CI must pass before treating this gate as satisfied.
 
 ## Acceptance gate
 
