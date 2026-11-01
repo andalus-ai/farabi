@@ -3,7 +3,6 @@ package tech.kayys.farabi.engine;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
-import java.util.UUID;
 
 /** Provider-neutral, workspace-scoped object inventory; implementations must never cross workspace boundaries. */
 public final class DatasetStorageInventoryPorts {
