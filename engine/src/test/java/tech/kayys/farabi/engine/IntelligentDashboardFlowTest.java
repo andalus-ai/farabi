@@ -92,6 +92,26 @@ class IntelligentDashboardFlowTest {
         assertNotNull(service.promote(draft.id(), "ws", "alice", draft.digest()));
     }
 
+    @Test void promotionRejectsAProposalReplacedAfterTheReviewerSawItsDigest() {
+        var reviewed = service.propose("ws", "alice", "revenue overview");
+        String reviewedDigest = reviewed.digest();
+
+        var replacementChart = new ChartSpec("kpi_revenue", Kind.KPI, "Order count",
+            new Binding("orders", null, "order_count", null), List.of());
+        var replacementSpec = new DashboardSpec("Replacement",
+            List.of(replacementChart), List.of(new Placement("kpi_revenue", 0, 0, 6, 3)));
+        var substituted = new DynamicDraft(reviewed.id(), reviewed.workspaceId(), reviewed.ownerId(),
+            reviewed.prompt(), replacementSpec, reviewed.assumptions(), reviewed.proposer(),
+            reviewed.parentManifestId(), reviewed.createdAt(), reviewed.expiresAt());
+        draftStore.put(reviewed.id(), substituted);
+
+        assertNotEquals(reviewedDigest, substituted.digest());
+        assertThrows(IllegalStateException.class,
+            () -> service.promote(reviewed.id(), "ws", "alice", reviewedDigest));
+        assertTrue(manifestStore.isEmpty(), "a substituted proposal must never be published");
+        assertTrue(source.executed.isEmpty(), "promotion-time digest validation must precede data access");
+    }
+
     @Test void expiredDraftsCannotBePromoted() {
         var draft = service.propose("ws", "alice", "revenue by region");
         clock.now = clock.now.plus(Duration.ofHours(25));
