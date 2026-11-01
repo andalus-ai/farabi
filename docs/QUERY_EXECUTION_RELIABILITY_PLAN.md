@@ -3,6 +3,7 @@
 - **Status:** Planning
 - **Date:** 2026-11-01
 - **Design authority:** Proposed ADR-009
+- **Persistence detail:** [Additive persistence design](QUERY_EXECUTION_PERSISTENCE_DESIGN.md)
 - **Scope:** Engine contracts, persistence adapters, provider adapters, recovery workers, and Quarkus wiring
 - **Non-goal:** This plan does not authorize production behavior changes. Implement each phase only after ADR-009 and its policy defaults are approved.
 
