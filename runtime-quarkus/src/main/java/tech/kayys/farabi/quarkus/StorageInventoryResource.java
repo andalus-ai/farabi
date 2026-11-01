@@ -127,7 +127,9 @@ public class StorageInventoryResource {
                 report.orphanGracePeriod().toSeconds(), report.catalogObjects(), report.providerObjects(),
                 report.consistent(), findings);
     }
-    public record CleanupPreviewRequest(UUID reportId) {}\n    public record AuditEventView(UUID id, UUID jobId, String actorId, EventType type, int attempt, UUID reportId, String errorCode, Instant occurredAt) {}\n    public record JobView(UUID id, String workspaceId, DatasetStorageInventoryJobPorts.Status status,
+    public record CleanupPreviewRequest(UUID reportId) {}
+    public record AuditEventView(UUID id, UUID jobId, String actorId, EventType type, int attempt, UUID reportId, String errorCode, Instant occurredAt) {}
+    public record JobView(UUID id, String workspaceId, DatasetStorageInventoryJobPorts.Status status,
             int attempts, int maxAttempts, UUID reportId, String errorCode, String errorMessage,
             Instant createdAt, Instant updatedAt) {}
     public record ErrorView(String message) {}
