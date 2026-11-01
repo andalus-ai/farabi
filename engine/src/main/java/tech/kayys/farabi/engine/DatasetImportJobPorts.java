@@ -14,7 +14,7 @@ public final class DatasetImportJobPorts {
     public record Job(
             UUID id, String workspaceId, UUID datasetId, String idempotencyKey,
             Status status, int attempts, int maxAttempts, String leaseOwner,
-            UUID leaseToken, Instant leaseUntil, String errorCode, String errorMessage,
+            UUID leaseToken, Instant leaseUntil, Instant availableAt, String errorCode, String errorMessage,
             Instant createdAt, Instant updatedAt) {
         public Job {
             Objects.requireNonNull(id, "id");
@@ -24,7 +24,7 @@ public final class DatasetImportJobPorts {
             Objects.requireNonNull(status, "status");
             if (attempts < 0 || maxAttempts < 1 || attempts > maxAttempts)
                 throw new IllegalArgumentException("invalid attempt counters");
-            Objects.requireNonNull(createdAt, "createdAt");
+            Objects.requireNonNull(availableAt, "availableAt");\n            Objects.requireNonNull(createdAt, "createdAt");
             Objects.requireNonNull(updatedAt, "updatedAt");
             if (status == Status.RUNNING && (leaseToken == null || leaseUntil == null))
                 throw new IllegalArgumentException("running job requires a lease token and expiry");
@@ -56,15 +56,15 @@ public final class DatasetImportJobPorts {
         DatasetImportPorts.StagedSource resolve(DatasetContracts.Dataset dataset);
     }
 
-    public interface Store {
+    public interface SubmissionStore {\n        /** Inserts dataset and job in one database transaction. */\n        Job registerAndEnqueue(DatasetContracts.Dataset dataset, NewJob request);\n    }\n\n    public interface Store {
         /** Idempotent within a workspace: repeated keys return the original job. */
         Job enqueue(NewJob request);
         Optional<Job> find(UUID jobId, String workspaceId);
         Optional<Job> findByIdempotencyKey(String workspaceId, String idempotencyKey);
         /** Claims one queued or expired job; null when no work is available. */
         Optional<Job> claim(Lease lease);
-        boolean complete(UUID jobId, UUID leaseToken, Instant now);
+        boolean renew(UUID jobId, UUID leaseToken, Instant leaseUntil, Instant now);\n        boolean complete(UUID jobId, UUID leaseToken, Instant now);
         /** Requeues while attempts remain; otherwise moves the job to FAILED. */
-        boolean fail(UUID jobId, UUID leaseToken, String errorCode, String message, Instant now);
+        boolean fail(UUID jobId, UUID leaseToken, String errorCode, String message, Instant retryAt, Instant now);
     }
 }
