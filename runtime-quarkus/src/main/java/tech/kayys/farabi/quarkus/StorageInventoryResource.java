@@ -33,7 +33,6 @@ import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.EventType;
 @Path("/api/storage/inventory")
 @Authenticated
 @Produces(MediaType.APPLICATION_JSON)
-@Consumes(MediaType.APPLICATION_JSON)
 public class StorageInventoryResource {
     @Inject SecurityIdentity identity;
     @Inject DatasetStorageInventoryService inventory;
@@ -80,6 +79,7 @@ public class StorageInventoryResource {
 
     /** Creates a persisted dry-run proposal only; this endpoint cannot delete objects. */
     @POST
+    @Consumes(MediaType.APPLICATION_JSON)
     @Path("/cleanup-previews")
     public Response previewCleanup(CleanupPreviewRequest request) {
         String workspace = workspace(); authorize(workspace);
