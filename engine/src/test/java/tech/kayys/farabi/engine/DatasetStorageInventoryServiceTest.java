@@ -36,6 +36,29 @@ class DatasetStorageInventoryServiceTest {
         assertFalse(report.findings().stream().anyMatch(f->f.locationRef().equals("orphan/new")));
     }
 
+
+    @Test void persistsReportsAndScopesHistoryReads() {
+        List<DatasetStorageInventoryService.Report> saved = new java.util.ArrayList<>();
+        DatasetStorageInventoryPorts.Reports reports = new DatasetStorageInventoryPorts.Reports() {
+            public void save(DatasetStorageInventoryService.Report report) { saved.add(report); }
+            public List<DatasetStorageInventoryService.Report> recent(String workspace, int limit) {
+                assertEquals("workspace-a", workspace);
+                return saved.stream().limit(limit).toList();
+            }
+        };
+        DatasetReferences refs = workspace -> List.of();
+        Inventory inventory = new Inventory() {
+            public Optional<ObjectEntry> inspect(String ref, String workspace) { return Optional.empty(); }
+            public List<ObjectEntry> list(String workspace) { return List.of(); }
+        };
+        var service = new DatasetStorageInventoryService(refs, inventory,
+                Clock.fixed(now, ZoneOffset.UTC), Duration.ofHours(24), reports);
+        var report = service.inspect("workspace-a");
+        assertEquals(report.id(), saved.get(0).id());
+        assertEquals(List.of(report), service.recent("workspace-a", 10));
+        assertThrows(IllegalArgumentException.class, () -> service.recent("workspace-b", 0));
+    }
+
     @Test void rejectsDuplicateCatalogReferences() {
         DatasetReferences refs=workspace -> List.of(new DatasetReference("same",1),new DatasetReference("same",1));
         Inventory inventory=new Inventory() {
