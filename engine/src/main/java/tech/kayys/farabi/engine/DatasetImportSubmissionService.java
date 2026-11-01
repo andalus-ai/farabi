@@ -2,7 +2,8 @@ package tech.kayys.farabi.engine;
 
 import java.time.Clock;
 import java.util.Objects;
-import java.util.UUID;\nimport java.util.Optional;
+import java.util.UUID;
+import java.util.Optional;
 import tech.kayys.farabi.engine.DatasetContracts.Dataset;
 import tech.kayys.farabi.engine.DatasetContracts.Lifecycle;
 import tech.kayys.farabi.engine.DatasetImportJobPorts.*;
@@ -31,6 +32,12 @@ public final class DatasetImportSubmissionService {
         Objects.requireNonNull(request,"request");
         QueryContracts.required(idempotencyKey,"idempotencyKey");
         authorizer.authorizeRegistration(request.workspaceId(),request.subjectId(),request.sourceId());
+        Optional<Job> existing=jobs.findByIdempotencyKey(request.workspaceId(),idempotencyKey);
+        if(existing.isPresent()){
+            Dataset existingDataset=catalog.find(existing.get().datasetId(),request.workspaceId())
+                    .orElseThrow(()->new IllegalStateException("idempotent import job references missing dataset"));
+            return new Submission(existingDataset,existing.get());
+        }
         StagedSource staged=Objects.requireNonNull(intake.stage(request),"staged source");
         var now=clock.instant();
         Dataset dataset=new Dataset(UUID.randomUUID(),request.workspaceId(),request.name(),request.sourceId(),
