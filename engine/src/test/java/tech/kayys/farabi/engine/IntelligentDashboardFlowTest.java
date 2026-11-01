@@ -92,6 +92,26 @@ class IntelligentDashboardFlowTest {
         assertNotNull(service.promote(draft.id(), "ws", "alice", draft.digest()));
     }
 
+    @Test void promotionRejectsAProposalReplacedAfterTheReviewerSawItsDigest() {
+        var reviewed = service.propose("ws", "alice", "revenue overview");
+        String reviewedDigest = reviewed.digest();
+
+        var replacementChart = new ChartSpec("kpi_revenue", Kind.KPI, "Order count",
+            new Binding("orders", null, "order_count", null), List.of());
+        var replacementSpec = new DashboardSpec("Replacement",
+            List.of(replacementChart), List.of(new Placement("kpi_revenue", 0, 0, 6, 3)));
+        var substituted = new DynamicDraft(reviewed.id(), reviewed.workspaceId(), reviewed.ownerId(),
+            reviewed.prompt(), replacementSpec, reviewed.assumptions(), reviewed.proposer(),
+            reviewed.parentManifestId(), reviewed.createdAt(), reviewed.expiresAt());
+        draftStore.put(reviewed.id(), substituted);
+
+        assertNotEquals(reviewedDigest, substituted.digest());
+        assertThrows(IllegalStateException.class,
+            () -> service.promote(reviewed.id(), "ws", "alice", reviewedDigest));
+        assertTrue(manifestStore.isEmpty(), "a substituted proposal must never be published");
+        assertTrue(source.executed.isEmpty(), "promotion-time digest validation must precede data access");
+    }
+
     @Test void expiredDraftsCannotBePromoted() {
         var draft = service.propose("ws", "alice", "revenue by region");
         clock.now = clock.now.plus(Duration.ofHours(25));
@@ -158,6 +178,40 @@ class IntelligentDashboardFlowTest {
         assertEquals(List.of("orders"), seen);
         grants.clear();
         assertThrows(SecurityException.class, () -> spy.propose("ws", "alice", "revenue by region"));
+    }
+
+    @Test void agentFilterInjectionIsRejectedBeforeDraftCreationOrDataAccess() {
+        Proposer rogue = req -> {
+            var chart = new ChartSpec("injected", Kind.KPI, "Revenue", new Binding("orders", null, "revenue", null),
+                List.of(new Filter("region", "eq", "x' OR 1=1")));
+            return new Proposal(new DashboardSpec("Injected filter", List.of(chart), DashboardLayouts.flow(List.of(chart))), List.of(), "rogue-llm");
+        };
+        var guarded = build(rogue);
+
+        var ex = assertThrows(DashboardSpecValidator.InvalidSpecException.class,
+            () -> guarded.propose("ws", "alice", "show revenue"));
+        assertTrue(ex.issues().stream().anyMatch(issue -> issue.code().equals("INVALID_QUERY")), ex.issues().toString());
+        assertTrue(draftStore.isEmpty(), "an invalid proposal must not become a draft");
+        assertTrue(source.executed.isEmpty(), "proposal validation must not execute data queries");
+        assertTrue(actions().contains("draft.rejected"));
+    }
+
+    @Test void oversizedAgentProposalIsRejectedBeforeDraftCreation() {
+        Proposer rogue = req -> {
+            List<ChartSpec> charts = new ArrayList<>();
+            for (int i = 0; i < DashboardSpecValidator.MAX_CHARTS + 1; i++) {
+                charts.add(new ChartSpec("chart_" + i, Kind.KPI, "Revenue " + i,
+                    new Binding("orders", null, "revenue", null), List.of()));
+            }
+            return new Proposal(new DashboardSpec("Too many charts", charts, DashboardLayouts.flow(charts)), List.of(), "rogue-llm");
+        };
+        var guarded = build(rogue);
+
+        var ex = assertThrows(DashboardSpecValidator.InvalidSpecException.class,
+            () -> guarded.propose("ws", "alice", "show revenue"));
+        assertTrue(ex.issues().stream().anyMatch(issue -> issue.code().equals("TOO_MANY_CHARTS")), ex.issues().toString());
+        assertTrue(draftStore.isEmpty(), "an oversized proposal must not become a draft");
+        assertTrue(source.executed.isEmpty());
     }
 
     @Test void promptsAreBounded() {

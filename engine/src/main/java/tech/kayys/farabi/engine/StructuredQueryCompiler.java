@@ -16,6 +16,7 @@ import tech.kayys.farabi.engine.VisualizationContracts.*;
 public final class StructuredQueryCompiler {
     public static final int DEFAULT_LIMIT = 500;
     public static final int MAX_LIMIT = 1000;
+    public static final int MAX_FILTERS = 16;
     private static final Pattern SAFE_TEXT = Pattern.compile("[\\p{L}\\p{N} _.:/-]{1,64}");
 
     public record Query(String datasetId, String measureId, List<String> dimensions, List<Filter> filters, int limit) {
@@ -24,6 +25,7 @@ public final class StructuredQueryCompiler {
             QueryContracts.required(measureId, "measureId");
             dimensions = List.copyOf(Objects.requireNonNull(dimensions));
             filters = List.copyOf(Objects.requireNonNull(filters));
+            if (filters.size() > MAX_FILTERS) throw new IllegalArgumentException("at most " + MAX_FILTERS + " filters");
             if (dimensions.size() > 2) throw new IllegalArgumentException("at most two dimensions");
             if (new HashSet<>(dimensions).size() != dimensions.size()) throw new IllegalArgumentException("duplicate dimension");
             if (limit < 1 || limit > MAX_LIMIT) throw new IllegalArgumentException("limit must be 1.." + MAX_LIMIT);

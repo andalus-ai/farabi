@@ -64,6 +64,8 @@ public final class DashboardSpecValidator {
         }
         Dataset ds = found.get();
         int before = issues.size();
+        if (chart.filters().size() > StructuredQueryCompiler.MAX_FILTERS)
+            issues.add(new Issue(id, "TOO_MANY_FILTERS", "at most " + StructuredQueryCompiler.MAX_FILTERS + " filters per chart"));
 
         if (ds.measure(b.valueField()).isEmpty()) issues.add(new Issue(id, "UNKNOWN_MEASURE", "value field is not a measure of the dataset"));
         Dimension category = null, series = null;
