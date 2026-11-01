@@ -16,6 +16,7 @@ import tech.kayys.farabi.engine.VisualizationContracts.*;
 public final class StructuredQueryCompiler {
     public static final int DEFAULT_LIMIT = 500;
     public static final int MAX_LIMIT = 1000;
+    public static final int MAX_FILTERS = 16;
     private static final Pattern SAFE_TEXT = Pattern.compile("[\\p{L}\\p{N} _.:/-]{1,64}");
 
     public record Query(String datasetId, String measureId, List<String> dimensions, List<Filter> filters, int limit) {
