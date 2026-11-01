@@ -10,4 +10,6 @@
 - ADR-008: Isolate agent orchestration behind a Farabi-owned boundary — **accepted for the first integration increment**; remote Andalus Runtime adapter, Farabi-owned authorization/execution, and explicit human promotion gate.
 - [ADR-009: Query deadlines, cancellation, and ambiguous provider outcomes](ADR-009-query-deadlines-and-reconciliation.md) — **proposed**; durable deadlines, idempotent cancellation, and provider reconciliation.
 
+Implementation sequencing: [Query execution reliability plan](../QUERY_EXECUTION_RELIABILITY_PLAN.md) — phased contract, migration, provider, deadline, reconciliation, and rollout work; planning only.
+
 Each ADR records a decision at the stated scope. An accepted architecture boundary does not mean its implementation or production acceptance gates are complete.
