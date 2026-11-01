@@ -105,7 +105,7 @@ class JdbcDatasetImportJobStoreTest {
         }
     }
 
-    private record TestDataSource(String url) implements DataSource {
+    record TestDataSource(String url) implements DataSource {
         public Connection getConnection() throws SQLException{return DriverManager.getConnection(url);}
         public Connection getConnection(String user,String password)throws SQLException{return DriverManager.getConnection(url,user,password);}
         public java.io.PrintWriter getLogWriter(){return null;}
