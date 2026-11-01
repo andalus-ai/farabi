@@ -16,7 +16,7 @@ class JdbcDatasetImportJobStoreTest {
 
     @BeforeEach void setUp() throws Exception {
         String url="jdbc:h2:mem:jobs_"+UUID.randomUUID()+";MODE=PostgreSQL;DB_CLOSE_DELAY=-1";
-        source=new JdbcDatasetCatalogTest.DriverDataSource(url);
+        source=new TestDataSource(url);
         store=new JdbcDatasetImportJobStore(source);
         try(Connection c=source.getConnection();Statement s=c.createStatement()){
             s.execute("CREATE TABLE farabi_datasets(id UUID PRIMARY KEY, workspace_id VARCHAR(200) NOT NULL, name VARCHAR(300) NOT NULL, source_id VARCHAR(200) NOT NULL, format VARCHAR(40) NOT NULL, location_ref VARCHAR(2000) NOT NULL, lifecycle VARCHAR(40) NOT NULL, created_at TIMESTAMP WITH TIME ZONE NOT NULL, updated_at TIMESTAMP WITH TIME ZONE NOT NULL)");
