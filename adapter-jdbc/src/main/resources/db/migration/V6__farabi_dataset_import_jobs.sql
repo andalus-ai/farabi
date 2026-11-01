@@ -8,7 +8,7 @@ CREATE TABLE farabi_dataset_import_jobs (
     max_attempts INTEGER NOT NULL CHECK (max_attempts > 0),
     lease_owner VARCHAR(200),
     lease_token UUID,
-    lease_until TIMESTAMPTZ,
+    lease_until TIMESTAMPTZ,\n    available_at TIMESTAMPTZ NOT NULL,
     error_code VARCHAR(100),
     error_message VARCHAR(2000),
     created_at TIMESTAMPTZ NOT NULL,
