@@ -51,7 +51,7 @@ public final class StructuredQueryCompiler {
 
         String aggregate = measure.aggregation() + "(" + quote(measure.column()) + ")";
         StringBuilder sql = new StringBuilder("SELECT ");
-        for (Dimension d : dims) sql.append(quote(d.column())).append(" AS ").append(quote(d.id())).append(", ");
+        for (Dimension d : dims) sql.append(expression(d)).append(" AS ").append(quote(d.id())).append(", ");
         sql.append(aggregate).append(" AS ").append(quote(measure.id()));
         sql.append(" FROM ");
         sql.append(String.join(".", Arrays.stream(ds.qualifiedTable().split("\\.")).map(StructuredQueryCompiler::quote).toList()));
@@ -64,14 +64,19 @@ public final class StructuredQueryCompiler {
         if (!predicates.isEmpty()) sql.append(" WHERE ").append(String.join(" AND ", predicates));
 
         if (!dims.isEmpty()) {
-            sql.append(" GROUP BY ").append(String.join(", ", dims.stream().map(d -> quote(d.column())).toList()));
+            sql.append(" GROUP BY ").append(String.join(", ", dims.stream().map(StructuredQueryCompiler::expression).toList()));
             List<String> order = new ArrayList<>();
             if (dims.get(0).type() != DimensionType.TIME) order.add(aggregate + " DESC");
-            for (Dimension d : dims) order.add(quote(d.column()) + " ASC");
+            for (Dimension d : dims) order.add(expression(d) + " ASC");
             sql.append(" ORDER BY ").append(String.join(", ", order));
         }
         sql.append(" LIMIT ").append(q.limit());
         return new Plan(ds.sourceId(), sql.toString());
+    }
+
+    /** Grouping expression; filters always compare the raw column, never the truncated one. */
+    private static String expression(Dimension d) {
+        return d.grain() == null ? quote(d.column()) : "DATE_TRUNC('" + d.grain().name() + "', " + quote(d.column()) + ")";
     }
 
     private static String operator(String op, Dimension d) {

@@ -11,6 +11,8 @@ import java.util.regex.Pattern;
 public final class SemanticModel {
     public enum Aggregation { SUM, AVG, MIN, MAX, COUNT }
     public enum DimensionType { CATEGORY, TIME, NUMBER }
+    /** Catalog-defined truncation for TIME dimensions, e.g. a "month" dimension over a timestamp column. */
+    public enum Grain { DAY, WEEK, MONTH, QUARTER, YEAR }
 
     private static final Pattern IDENTIFIER = Pattern.compile("[A-Za-z_][A-Za-z_0-9]{0,63}");
 
@@ -23,13 +25,15 @@ public final class SemanticModel {
         }
     }
 
-    public record Dimension(String id, String label, String column, DimensionType type) {
+    public record Dimension(String id, String label, String column, DimensionType type, Grain grain) {
         public Dimension {
             identifier(id, "dimension id");
             identifier(column, "dimension column");
             Objects.requireNonNull(type, "type");
+            if (grain != null && type != DimensionType.TIME) throw new IllegalArgumentException("grain requires a TIME dimension");
             label = label == null || label.isBlank() ? id : label;
         }
+        public Dimension(String id, String label, String column, DimensionType type) { this(id, label, column, type, null); }
     }
 
     public record Dataset(String id, String label, String sourceId, String qualifiedTable,

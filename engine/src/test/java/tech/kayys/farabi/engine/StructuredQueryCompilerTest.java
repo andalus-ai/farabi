@@ -55,6 +55,18 @@ class StructuredQueryCompilerTest {
         assertThrows(IllegalArgumentException.class, () -> new Query("orders", "revenue", List.of("region", "region"), List.of(), 5));
     }
 
+    @Test void timeGrainsTruncateInSelectGroupByAndOrderButFiltersUseTheRawColumn() {
+        var sql = compiler.compile(new Query("orders", "revenue", List.of("quarter"),
+            List.of(new Filter("quarter", "gte", "2026-01-01")), 8)).sql();
+        assertEquals("SELECT DATE_TRUNC('QUARTER', \"order_ts\") AS \"quarter\", SUM(\"revenue\") AS \"revenue\" FROM \"sales\".\"orders\" "
+            + "WHERE \"order_ts\" >= DATE '2026-01-01' GROUP BY DATE_TRUNC('QUARTER', \"order_ts\") "
+            + "ORDER BY DATE_TRUNC('QUARTER', \"order_ts\") ASC LIMIT 8", sql);
+    }
+
+    @Test void grainsOnlyApplyToTimeDimensions() {
+        assertThrows(IllegalArgumentException.class, () -> new SemanticModel.Dimension("r", "R", "region", SemanticModel.DimensionType.CATEGORY, SemanticModel.Grain.MONTH));
+    }
+
     @Test void catalogRejectsUnsafeIdentifiers() {
         assertThrows(IllegalArgumentException.class, () -> new SemanticModel.Measure("m", "M", "revenue); DROP", SemanticModel.Aggregation.SUM));
         assertThrows(IllegalArgumentException.class, () -> new SemanticModel.Dataset("d", "D", "s", "a.b-c", List.of(IntelligenceFixtures.ORDERS.measures().get(0)), List.of()));

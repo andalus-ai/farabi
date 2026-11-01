@@ -18,10 +18,15 @@ import tech.kayys.farabi.engine.VisualizationContracts.DashboardSpec;
 public final class DynamicDashboardService {
     public static final int MAX_PROMPT = 2000;
 
-    public record DynamicDraft(UUID id, String workspaceId, String ownerId, String prompt, DashboardSpec spec,
+    /**
+     * {@code lineageId} is shared by every revision of one dashboard (a fresh draft is its own lineage) and becomes the
+     * manifest's {@code draftId}, so the existing UNIQUE(workspace, draft_id, revision) constraint makes concurrent
+     * edits of the same revision fail safely instead of silently forking.
+     */
+    public record DynamicDraft(UUID id, UUID lineageId, String workspaceId, String ownerId, String prompt, DashboardSpec spec,
                                List<String> assumptions, String proposer, UUID parentManifestId, Instant createdAt, Instant expiresAt) {
         public DynamicDraft {
-            Objects.requireNonNull(id); QueryContracts.required(workspaceId, "workspaceId"); QueryContracts.required(ownerId, "ownerId");
+            Objects.requireNonNull(id); Objects.requireNonNull(lineageId); QueryContracts.required(workspaceId, "workspaceId"); QueryContracts.required(ownerId, "ownerId");
             QueryContracts.required(prompt, "prompt"); Objects.requireNonNull(spec); QueryContracts.required(proposer, "proposer");
             assumptions = List.copyOf(assumptions); Objects.requireNonNull(createdAt); Objects.requireNonNull(expiresAt);
         }
@@ -31,6 +36,10 @@ public final class DynamicDashboardService {
     public interface DraftRepository {
         void save(DynamicDraft draft);
         Optional<DynamicDraft> find(UUID id, String workspaceId);
+        /** Atomic compare-and-set: true only for the first caller. A draft can be promoted once. */
+        boolean markPromoted(UUID id, String workspaceId);
+        /** Releases the claim after a failed publish so the reviewer may retry. */
+        void reopen(UUID id, String workspaceId);
     }
 
     private final SemanticModel model;
@@ -63,20 +72,20 @@ public final class DynamicDashboardService {
         var catalog = model.viewFor(workspaceId, subjectId, policy);
         if (catalog.datasets().isEmpty()) throw new SecurityException("no datasets available");
         Proposal proposal = proposer.propose(new Request(workspaceId, subjectId, prompt, catalog));
-        return store(workspaceId, subjectId, prompt, proposal.spec(), proposal.assumptions(), proposal.proposer(), null);
+        return store(workspaceId, subjectId, prompt, proposal.spec(), proposal.assumptions(), proposal.proposer(), null, null);
     }
 
     /** Conventional-editor entry point: a manifest reopened for editing becomes a draft for the next revision. */
     public DynamicDraft editPublished(UUID manifestId, String workspaceId, String subjectId) {
         Manifest m = manifests.find(Objects.requireNonNull(manifestId), workspaceId)
             .orElseThrow(() -> new IllegalArgumentException("manifest not found"));
-        return store(workspaceId, subjectId, "edit of manifest " + m.id(), m.spec(), List.of(), "manual-edit", m.id());
+        return store(workspaceId, subjectId, "edit of manifest " + m.id(), m.spec(), List.of(), "manual-edit", m.id(), m.draftId());
     }
 
     /** Conventional-editor save: same validation as agent output, always a new draft. */
     public DynamicDraft revise(UUID draftId, String workspaceId, String subjectId, DashboardSpec newSpec) {
         DynamicDraft d = owned(draftId, workspaceId, subjectId);
-        return store(workspaceId, subjectId, d.prompt(), newSpec, d.assumptions(), "manual-edit", d.parentManifestId());
+        return store(workspaceId, subjectId, d.prompt(), newSpec, d.assumptions(), "manual-edit", d.parentManifestId(), d.lineageId());
     }
 
     public LiveDashboardRuntime.LiveDashboard preview(UUID draftId, String workspaceId, String subjectId) {
@@ -96,21 +105,30 @@ public final class DynamicDashboardService {
         if (d.parentManifestId() != null)
             revision = manifests.find(d.parentManifestId(), workspaceId)
                 .orElseThrow(() -> new IllegalStateException("parent manifest missing")).revision() + 1;
-        var composition = composer.compose(d.id(), workspaceId, d.ownerId(), d.spec(), "draft:" + d.id() + ";proposer:" + d.proposer());
-        Manifest manifest = promotion.publish(composition, workspaceId, subjectId, revision);
+        if (!drafts.markPromoted(d.id(), workspaceId)) throw new IllegalStateException("draft already promoted");
+        Manifest manifest;
+        try {
+            var composition = composer.compose(d.lineageId(), workspaceId, d.ownerId(), d.spec(), "draft:" + d.id() + ";proposer:" + d.proposer());
+            manifest = promotion.publish(composition, workspaceId, subjectId, revision);
+        } catch (RuntimeException e) {   // includes a revision conflict from a concurrent edit of the same parent
+            drafts.reopen(d.id(), workspaceId);
+            audit.record(new Audit.Event("draft.promotion_failed", workspaceId, subjectId, "draft=" + d.id() + " reason=" + e.getClass().getSimpleName()));
+            throw e;
+        }
         audit.record(new Audit.Event("draft.promoted", workspaceId, subjectId,
             "draft=" + d.id() + " manifest=" + manifest.id() + " revision=" + revision + " digest=" + d.digest()));
         return manifest;
     }
 
-    private DynamicDraft store(String ws, String subject, String prompt, DashboardSpec spec, List<String> assumptions, String by, UUID parent) {
+    private DynamicDraft store(String ws, String subject, String prompt, DashboardSpec spec, List<String> assumptions, String by, UUID parent, UUID lineage) {
         var result = validator.validate(ws, subject, spec);
         if (!result.valid()) {
             audit.record(new Audit.Event("draft.rejected", ws, subject, "issues=" + result.issues().stream().map(i -> i.code()).toList()));
             result.requireValid();
         }
         Instant now = clock.instant();
-        DynamicDraft draft = new DynamicDraft(UUID.randomUUID(), ws, subject, prompt, spec, assumptions, by, parent, now, now.plus(ttl));
+        UUID id = UUID.randomUUID();
+        DynamicDraft draft = new DynamicDraft(id, lineage == null ? id : lineage, ws, subject, prompt, spec, assumptions, by, parent, now, now.plus(ttl));
         drafts.save(draft);
         audit.record(new Audit.Event("draft.created", ws, subject, "draft=" + draft.id() + " proposer=" + by + " digest=" + draft.digest()));
         return draft;
