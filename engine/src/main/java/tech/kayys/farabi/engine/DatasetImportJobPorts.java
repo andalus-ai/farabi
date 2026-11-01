@@ -51,7 +51,7 @@ public final class DatasetImportJobPorts {
         }
     }
 
-    public interface Store {
+    @FunctionalInterface\n    public interface SourceResolver {\n        DatasetImportPorts.StagedSource resolve(DatasetContracts.Dataset dataset);\n    }\n\n    public interface Store {
         /** Idempotent within a workspace: repeated keys return the original job. */
         Job enqueue(NewJob request);
         Optional<Job> find(UUID jobId, String workspaceId);
