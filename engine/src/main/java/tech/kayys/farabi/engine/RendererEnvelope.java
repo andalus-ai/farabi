@@ -17,10 +17,15 @@ public final class RendererEnvelope {
  }
  public static Dashboard from(Manifest manifest) {
   Objects.requireNonNull(manifest);
+  return from(manifest.spec(),manifest.id(),manifest.revision(),manifest.workspaceId());
+ }
+ /** Spec-level overload so unpublished drafts render identically; for a draft pass its id and revision 0. */
+ public static Dashboard from(DashboardSpec spec,UUID id,int revision,String workspaceId) {
+  Objects.requireNonNull(spec);Objects.requireNonNull(id);
   Map<String,Placement> placements=new HashMap<>();
-  for(Placement p:manifest.spec().layout()) placements.put(p.chartId(),p);
+  for(Placement p:spec.layout()) placements.put(p.chartId(),p);
   List<Chart> charts=new ArrayList<>();
-  for(ChartSpec c:manifest.spec().charts()){
+  for(ChartSpec c:spec.charts()){
    Binding b=c.binding();
    charts.add(new Chart(c.id(),switch(c.kind()){
     case BAR -> "tenun.bar";case LINE -> "tenun.line";case AREA -> "tenun.area";
@@ -28,6 +33,6 @@ public final class RendererEnvelope {
     case SCATTER -> "tenun.scatter";
    },c.title(),b.datasetId(),b.categoryField(),b.valueField(),b.seriesField(),c.filters(),placements.get(c.id())));
   }
-  return new Dashboard(1,manifest.id(),manifest.revision(),manifest.workspaceId(),manifest.spec().title(),charts);
+  return new Dashboard(1,id,revision,workspaceId,spec.title(),charts);
  }
 }
