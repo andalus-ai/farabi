@@ -19,6 +19,7 @@ import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectResponse;
+import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
 import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
 import tech.kayys.farabi.engine.DatasetContracts.Format;
 import tech.kayys.farabi.engine.DatasetImportPorts.ImportRequest;
@@ -44,6 +45,7 @@ class S3CompatibleDatasetAdapterTest {
         verify(client).putObject(captor.capture(), any(RequestBody.class));
         PutObjectRequest put = captor.getValue();
         assertEquals(ServerSideEncryption.AES256, put.serverSideEncryption());
+        assertEquals(ChecksumAlgorithm.SHA256, put.checksumAlgorithm());
         assertEquals((long) bytes.length, put.contentLength());
         assertEquals("text/csv", put.contentType());
         assertFalse(put.key().contains("workspace-secret"));
