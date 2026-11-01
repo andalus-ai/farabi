@@ -42,7 +42,11 @@ class DatasetStorageInventoryWorkerTest {
                     public List<Report> recent(String workspace, int limit) { return List.copyOf(saved); }
                 });
         DatasetStorageInventoryWorker worker = new DatasetStorageInventoryWorker(
-                "worker-a", store, inventory, Clock.fixed(now, ZoneOffset.UTC), Duration.ofMinutes(2), event -> { });
+                "worker-a", store, inventory, Clock.fixed(now, ZoneOffset.UTC), Duration.ofMinutes(2),
+                new DatasetStorageInventoryAuditPorts.AuditLog() {
+                    public void append(DatasetStorageInventoryAuditPorts.Event event) { }
+                    public List<DatasetStorageInventoryAuditPorts.Event> recent(String workspace, UUID jobId, int limit) { return List.of(); }
+                });
 
         assertTrue(worker.runOne());
         assertEquals(token, completedToken[0]);
