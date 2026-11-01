@@ -15,6 +15,17 @@ public final class DatasetStorageInventoryPorts {
         }
     }
 
+    public record DatasetReference(String locationRef, long expectedSizeBytes) {
+        public DatasetReference {
+            if (locationRef == null || locationRef.isBlank() || expectedSizeBytes < 0)
+                throw new IllegalArgumentException("invalid dataset reference");
+        }
+    }
+
+    public interface DatasetReferences {
+        List<DatasetReference> listActive(String workspaceId);
+    }
+
     public interface Inventory {
         /** Returns empty only when the referenced object is genuinely absent. */
         Optional<ObjectEntry> inspect(String locationRef, String workspaceId);
