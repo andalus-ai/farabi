@@ -28,3 +28,17 @@ The provider inventory port is implemented by the S3-compatible and local-file a
 The default grace period is 24 hours and is configurable with `FARABI_IMPORT_STORAGE_ORPHAN_GRACE_PERIOD` (ISO-8601 duration, for example `PT48H`). Newer unreferenced objects are intentionally suppressed because an upload may be staged before its database registration commits.
 
 This stage remains read-only. It does not delete or repair any object. The S3 implementation lists only the hashed workspace prefix; the local implementation lists only the workspace's hashed directory, skips symbolic links, and accepts UUID-named supported data files only. Provider inventory findings are currently returned by the application service and are not yet exposed as an HTTP endpoint or persisted as a second report family.
+
+
+## Persistent provider inventory reports and operator API
+
+Provider inventory snapshots are now stored in `farabi_storage_inventory_reports`; individual findings are stored in `farabi_storage_inventory_findings`. Header and finding rows are committed in one transaction. History queries are workspace-scoped and limited to 100 reports.
+
+The authenticated operator API is:
+
+- `POST /api/storage/inventory` — perform and persist an inventory inspection for the caller's workspace.
+- `GET /api/storage/inventory?limit=20` — retrieve recent persisted reports for that workspace.
+
+The API obtains workspace and subject identity from the authenticated security identity. It does not accept a caller-supplied workspace ID. Both operations invoke `DatasetStorageOperatorAuthorizer`. The built-in CDI implementation denies every request; deployments must replace it with their explicit operator RBAC policy. Authentication alone is intentionally insufficient.
+
+Reports include storage location references in findings. Treat this endpoint and its database tables as operator-sensitive data. Apply retention and access monitoring before enabling it for production operators.
