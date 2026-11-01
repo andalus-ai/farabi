@@ -72,7 +72,9 @@ public final class DatasetStorageCleanupPreviewService {
             Optional<ObjectEntry> current=inventory.inspect(finding.locationRef(), workspaceId);
             if (current.isEmpty()) continue;
             ObjectEntry object=current.get();
-            if (object.sizeBytes()!=finding.actualBytes() || object.lastModified().isAfter(cutoff)) continue;
+            if (object.sizeBytes()!=finding.actualBytes()
+                    || !object.lastModified().equals(finding.objectLastModified())
+                    || object.lastModified().isAfter(cutoff)) continue;
             candidates.add(new Candidate(object.locationRef(), object.sizeBytes(), object.lastModified()));
         }
         Plan plan=new Plan(UUID.randomUUID(), workspaceId, report.id(), actorId, now, now.plus(planLifetime), candidates);
