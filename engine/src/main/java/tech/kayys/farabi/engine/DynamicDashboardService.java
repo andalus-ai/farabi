@@ -70,13 +70,13 @@ public final class DynamicDashboardService {
     public DynamicDraft editPublished(UUID manifestId, String workspaceId, String subjectId) {
         Manifest m = manifests.find(Objects.requireNonNull(manifestId), workspaceId)
             .orElseThrow(() -> new IllegalArgumentException("manifest not found"));
-        return store(workspaceId, subjectId, "edit of manifest " + m.id(), m.spec(), List.of(), "manual-edit", m.id());
+        return store(workspaceId, subjectId, "edit of manifest " + m.id(), m.spec(), List.of(), "manual-edit", m.id(), m.draftId());
     }
 
     /** Conventional-editor save: same validation as agent output, always a new draft. */
     public DynamicDraft revise(UUID draftId, String workspaceId, String subjectId, DashboardSpec newSpec) {
         DynamicDraft d = owned(draftId, workspaceId, subjectId);
-        return store(workspaceId, subjectId, d.prompt(), newSpec, d.assumptions(), "manual-edit", d.parentManifestId());
+        return store(workspaceId, subjectId, d.prompt(), newSpec, d.assumptions(), "manual-edit", d.parentManifestId(), d.lineageId());
     }
 
     public LiveDashboardRuntime.LiveDashboard preview(UUID draftId, String workspaceId, String subjectId) {
@@ -96,21 +96,30 @@ public final class DynamicDashboardService {
         if (d.parentManifestId() != null)
             revision = manifests.find(d.parentManifestId(), workspaceId)
                 .orElseThrow(() -> new IllegalStateException("parent manifest missing")).revision() + 1;
-        var composition = composer.compose(d.id(), workspaceId, d.ownerId(), d.spec(), "draft:" + d.id() + ";proposer:" + d.proposer());
-        Manifest manifest = promotion.publish(composition, workspaceId, subjectId, revision);
+        if (!drafts.markPromoted(d.id(), workspaceId)) throw new IllegalStateException("draft already promoted");
+        Manifest manifest;
+        try {
+            var composition = composer.compose(d.lineageId(), workspaceId, d.ownerId(), d.spec(), "draft:" + d.id() + ";proposer:" + d.proposer());
+            manifest = promotion.publish(composition, workspaceId, subjectId, revision);
+        } catch (RuntimeException e) {   // includes a revision conflict from a concurrent edit of the same parent
+            drafts.reopen(d.id(), workspaceId);
+            audit.record(new Audit.Event("draft.promotion_failed", workspaceId, subjectId, "draft=" + d.id() + " reason=" + e.getClass().getSimpleName()));
+            throw e;
+        }
         audit.record(new Audit.Event("draft.promoted", workspaceId, subjectId,
             "draft=" + d.id() + " manifest=" + manifest.id() + " revision=" + revision + " digest=" + d.digest()));
         return manifest;
     }
 
-    private DynamicDraft store(String ws, String subject, String prompt, DashboardSpec spec, List<String> assumptions, String by, UUID parent) {
+    private DynamicDraft store(String ws, String subject, String prompt, DashboardSpec spec, List<String> assumptions, String by, UUID parent, UUID lineage) {
         var result = validator.validate(ws, subject, spec);
         if (!result.valid()) {
             audit.record(new Audit.Event("draft.rejected", ws, subject, "issues=" + result.issues().stream().map(i -> i.code()).toList()));
             result.requireValid();
         }
         Instant now = clock.instant();
-        DynamicDraft draft = new DynamicDraft(UUID.randomUUID(), ws, subject, prompt, spec, assumptions, by, parent, now, now.plus(ttl));
+        UUID id = UUID.randomUUID();
+        DynamicDraft draft = new DynamicDraft(id, lineage == null ? id : lineage, ws, subject, prompt, spec, assumptions, by, parent, now, now.plus(ttl));
         drafts.save(draft);
         audit.record(new Audit.Event("draft.created", ws, subject, "draft=" + draft.id() + " proposer=" + by + " digest=" + draft.digest()));
         return draft;

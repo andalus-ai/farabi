@@ -61,6 +61,14 @@ class HeuristicProposerTest {
         assertEquals("payroll", ask("salary by department").spec().charts().get(0).binding().datasetId());
     }
 
+    @Test void namedGrainSelectsTheMatchingTimeDimension() {
+        var p = ask("revenue by quarter");
+        var line = byId(p.spec()).get("trend_revenue_quarter");
+        assertNotNull(line, byId(p.spec()).keySet().toString());
+        assertEquals("quarter", line.binding().categoryField());
+        assertTrue(validator.validate("ws", "alice", p.spec()).valid());
+    }
+
     @Test void unmatchedRequestsAreRefusedRatherThanGuessed() {
         assertThrows(IllegalArgumentException.class, () -> ask("tell me a joke"));
     }
