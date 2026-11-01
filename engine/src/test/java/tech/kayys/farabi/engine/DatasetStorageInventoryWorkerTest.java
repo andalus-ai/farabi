@@ -37,7 +37,10 @@ class DatasetStorageInventoryWorkerTest {
                 workspace -> List.of(), new DatasetStorageInventoryPorts.Inventory() {
                     public Optional<DatasetStorageInventoryPorts.ObjectEntry> inspect(String ref, String workspace) { return Optional.empty(); }
                     public List<DatasetStorageInventoryPorts.ObjectEntry> list(String workspace) { return List.of(); }
-                }, Clock.fixed(now, ZoneOffset.UTC), Duration.ofHours(24), saved::add);
+                }, Clock.fixed(now, ZoneOffset.UTC), Duration.ofHours(24), new DatasetStorageInventoryPorts.Reports() {
+                    public void save(Report report) { saved.add(report); }
+                    public List<Report> recent(String workspace, int limit) { return List.copyOf(saved); }
+                });
         DatasetStorageInventoryWorker worker = new DatasetStorageInventoryWorker(
                 "worker-a", store, inventory, Clock.fixed(now, ZoneOffset.UTC), Duration.ofMinutes(2));
 
