@@ -28,7 +28,7 @@ flowchart TB
 **Execution** owns authorized plans, query jobs, provider job references, cancellation, reconciliation and results.
 **Visualization** owns chart specifications, data bindings, layout, interactivity and rendering contracts.
 **Dashboard** owns drafts, publication, immutable revisions, access controls and refresh configuration.
-**Agent** owns prompts, planning, tool approvals, explanations and provenance.
+**Agent** owns prompts, planning, tool approvals, explanations and provenance. The Statistical Intelligence capability owns method registry metadata, typed analysis plans, diagnostics, reproducible statistical execution and research-result artifacts; the agent proposes methods but deterministic services validate and execute them.
 **Platform** owns tenancy, authentication, audit, policy, scheduling, telemetry and deployment.
 
 ## Query trust boundary

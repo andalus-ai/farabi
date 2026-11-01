@@ -11,7 +11,7 @@ Prefer **one cohesive PR per verified milestone**, not dozens of tiny PRs. Each 
 | R3: Conventional BI | Semantic catalog, Tenun chart spec, dashboard CRUD, filters | User can author/publish dashboard |
 | R4: Agentic BI | Agent planning, Batik A2UI, governed tool contracts | Agent cannot bypass policy; deterministic artifact schema |
 | R5: Promotion | Dynamic draft -> immutable versioned dashboard artifact | Reproducible rendering and revision history |
-| R6: Enterprise/scale | Sharing, RBAC/ABAC, observability, caching, multi-source | Load, security and recovery benchmarks |
+| R6: Statistical intelligence foundation | Secure data import, dataset profiling, statistical method registry, descriptive and inferential statistics, specialist agent plans | Reproducible known-answer tests, assumption checks, tenant isolation |\n| R7: Advanced research and presentation | Regression, forecasting, multivariate, causal and specialized methods; Tenun/Batik charts and research reports | Method validation, uncertainty/diagnostics, reproducible artifacts |\n| R8: Enterprise/scale | Sharing, RBAC/ABAC, observability, caching, multi-source, distributed analysis | Load, security and recovery benchmarks |
 
 ## Critical path
 Identity -> governed semantic compiler -> durable query lifecycle -> results -> chart contract -> dashboard artifact -> agent orchestration -> promotion.
