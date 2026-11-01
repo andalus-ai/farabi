@@ -118,7 +118,7 @@ public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profil
             } catch (AtomicMoveNotSupportedException e) {
                 Files.move(temporary, target);
             }
-            return new StagedSource(request.format(), "local-file:" + request.workspaceId() + ":" + id);
+            return new StagedSource(request.format(), "local-file:" + request.workspaceId() + ":" + id, copied);
         } catch (IOException e) {
             throw new IllegalStateException("unable to stage dataset upload", e);
         }
