@@ -60,3 +60,10 @@ Migration V12 adds `farabi_storage_inventory_audit`. The application appends eve
 The operator-only endpoint `GET /api/storage/inventory/audit?limit=50` returns recent events for the authenticated workspace; add `jobId` to narrow the history to one job. The caller cannot choose a workspace, and the same fail-closed operator authorizer is applied.
 
 The audit table intentionally excludes idempotency keys, object location references, and raw exception messages. Audit events are appended after the corresponding job transition. If audit persistence is unavailable, the API submission may return an error after the idempotent job has been enqueued; retrying the same idempotency key is safe. Retention, export, and external tamper-evident archival remain deployment responsibilities.
+
+
+### Expired final-attempt lease audit hardening
+
+The inventory worker now runs an explicit expired-lease reaper before claiming another job. The JDBC reaper uses one PostgreSQL `UPDATE ... RETURNING` statement to terminalize expired RUNNING jobs whose attempt budget is exhausted and return the transitioned rows. The worker appends a `FAILED` audit event with error code `LEASE_EXHAUSTED`, the final attempt number, workspace, job, and worker identity. This closes the previous observability gap where the claim query silently marked such jobs FAILED without an audit event.
+
+The reaper is idempotent: once a row is FAILED it no longer matches the RUNNING predicate, and the audit table's unique key prevents duplicate logical events. The state transition and audit append are still separate database operations; an audit-store outage in the narrow interval after reaping can leave a terminal job without its event. A transactional outbox is the remaining way to eliminate that failure window.
