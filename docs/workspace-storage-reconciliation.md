@@ -67,3 +67,18 @@ The audit table intentionally excludes idempotency keys, object location referen
 The inventory worker now runs an explicit expired-lease reaper before claiming another job. The JDBC reaper uses one PostgreSQL `UPDATE ... RETURNING` statement to terminalize expired RUNNING jobs whose attempt budget is exhausted and return the transitioned rows. The worker appends a `FAILED` audit event with error code `LEASE_EXHAUSTED`, the final attempt number, workspace, job, and worker identity. This closes the previous observability gap where the claim query silently marked such jobs FAILED without an audit event.
 
 The reaper is idempotent: once a row is FAILED it no longer matches the RUNNING predicate, and the audit table's unique key prevents duplicate logical events. The state transition and audit append are still separate database operations; an audit-store outage in the narrow interval after reaping can leave a terminal job without its event. A transactional outbox is the remaining way to eliminate that failure window.
+
+
+## Orphan cleanup previews (dry-run only)
+
+Migration V13 adds workspace-scoped cleanup preview plans and candidate rows. An operator can request a preview from a persisted inventory report:
+
+- `POST /api/storage/inventory/cleanup-previews` with JSON `{"reportId":"<inventory-report-uuid>"}` creates a preview.
+- `GET /api/storage/inventory/cleanup-previews?limit=20` lists recent previews for the caller's workspace.
+- `GET /api/storage/inventory/cleanup-previews/{planId}` reads one workspace-scoped preview.
+
+The API derives workspace and actor from the authenticated identity and invokes the same fail-closed operator authorizer. Plans persist their source report, creator, creation/expiry timestamps, and candidate object references, sizes, and last-modified timestamps. The default lifetime is 15 minutes and is configurable with `farabi.storage.cleanup-preview.lifetime`.
+
+Before including a reported orphan, the preview service rechecks that the object still exists in the caller's workspace, its size has not changed, it remains older than the source report's grace period, and it has not become an active catalog reference. Candidates that fail any check are omitted. The database enforces workspace-consistent foreign keys between plans, reports, and plan items.
+
+**This is a proposal only.** There is deliberately no delete/apply port, endpoint, or automatic execution path. An expired preview is informational and must not be treated as authorization to delete. A future destructive workflow must require a separate explicit approval, repeat every ownership/reference/age check immediately before deletion, and write a dedicated audit record. Quota repair remains read-only and separate.
