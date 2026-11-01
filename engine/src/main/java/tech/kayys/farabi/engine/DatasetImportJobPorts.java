@@ -51,10 +51,16 @@ public final class DatasetImportJobPorts {
         }
     }
 
-    @FunctionalInterface\n    public interface SourceResolver {\n        DatasetImportPorts.StagedSource resolve(DatasetContracts.Dataset dataset);\n    }\n\n    public interface Store {
+    @FunctionalInterface
+    public interface SourceResolver {
+        DatasetImportPorts.StagedSource resolve(DatasetContracts.Dataset dataset);
+    }
+
+    public interface Store {
         /** Idempotent within a workspace: repeated keys return the original job. */
         Job enqueue(NewJob request);
-        Optional<Job> find(UUID jobId, String workspaceId);\n        Optional<Job> findByIdempotencyKey(String workspaceId, String idempotencyKey);
+        Optional<Job> find(UUID jobId, String workspaceId);
+        Optional<Job> findByIdempotencyKey(String workspaceId, String idempotencyKey);
         /** Claims one queued or expired job; null when no work is available. */
         Optional<Job> claim(Lease lease);
         boolean complete(UUID jobId, UUID leaseToken, Instant now);
