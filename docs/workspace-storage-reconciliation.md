@@ -51,3 +51,12 @@ Migration V11 adds `farabi_storage_inventory_jobs`, with workspace-scoped idempo
 The Quarkus scheduler is opt-in. Set `FARABI_STORAGE_INVENTORY_POLL_INTERVAL` to an interval such as `2s` and `FARABI_IMPORT_WORKER_ENABLED=true` to enable the scheduler. Configure `FARABI_STORAGE_INVENTORY_WORKER_ID`, `FARABI_STORAGE_INVENTORY_LEASE_DURATION`, and `FARABI_STORAGE_INVENTORY_MAX_ATTEMPTS` as needed. Polling processes at most ten jobs per tick. This worker only creates read-only inventory reports; it does not delete objects or repair accounting.
 
 The operator authorizer remains fail-closed by default. Ensure the workspace has a storage-accounting row before submitting jobs, since the queue is workspace-FK scoped.
+
+
+## Operator and worker audit trail
+
+Migration V12 adds `farabi_storage_inventory_audit`. The application appends events for operator submission and worker success, retry scheduling, and terminal failure. Events capture workspace, job, actor (authenticated subject or worker identity), attempt, report correlation, error code, and timestamp. Duplicate event delivery is idempotent. A PostgreSQL trigger rejects UPDATE and DELETE so audit rows are immutable.
+
+The operator-only endpoint `GET /api/storage/inventory/audit?limit=50` returns recent events for the authenticated workspace; add `jobId` to narrow the history to one job. The caller cannot choose a workspace, and the same fail-closed operator authorizer is applied.
+
+The audit table intentionally excludes idempotency keys, object location references, and raw exception messages. Audit events are appended after the corresponding job transition. If audit persistence is unavailable, the API submission may return an error after the idempotent job has been enqueued; retrying the same idempotency key is safe. Retention, export, and external tamper-evident archival remain deployment responsibilities.
