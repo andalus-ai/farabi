@@ -25,6 +25,7 @@ public final class StructuredQueryCompiler {
             QueryContracts.required(measureId, "measureId");
             dimensions = List.copyOf(Objects.requireNonNull(dimensions));
             filters = List.copyOf(Objects.requireNonNull(filters));
+            if (filters.size() > MAX_FILTERS) throw new IllegalArgumentException("at most " + MAX_FILTERS + " filters");
             if (dimensions.size() > 2) throw new IllegalArgumentException("at most two dimensions");
             if (new HashSet<>(dimensions).size() != dimensions.size()) throw new IllegalArgumentException("duplicate dimension");
             if (limit < 1 || limit > MAX_LIMIT) throw new IllegalArgumentException("limit must be 1.." + MAX_LIMIT);
