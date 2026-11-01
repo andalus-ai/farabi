@@ -210,6 +210,16 @@ public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profil
         return values;
     }
 
+    /** Removes an ephemeral local staging copy after a delegated profile operation. */
+    public void deleteStaged(StagedSource source, String workspaceId) {
+        Path file = resolve(source, workspaceId);
+        try {
+            Files.deleteIfExists(file);
+        } catch (IOException e) {
+            throw new IllegalStateException("unable to remove temporary staged dataset", e);
+        }
+    }
+
     private Path resolve(StagedSource source, String workspaceId) {
         String[] parts = source.locationRef().split(":", 3);
         if (parts.length != 3 || !"local-file".equals(parts[0]) || !workspaceId.equals(parts[1])) {

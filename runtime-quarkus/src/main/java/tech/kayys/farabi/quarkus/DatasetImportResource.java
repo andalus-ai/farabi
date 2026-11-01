@@ -63,6 +63,13 @@ public class DatasetImportResource {
         } catch (IllegalArgumentException e) {
             throw new jakarta.ws.rs.BadRequestException("unsupported dataset format");
         }
+        if (parsedFormat != Format.CSV && parsedFormat != Format.TSV
+                && parsedFormat != Format.JSON && parsedFormat != Format.JSONL) {
+            throw new jakarta.ws.rs.BadRequestException("supported formats are CSV, TSV, JSON and JSONL");
+        }
+        if (datasetName == null || datasetName.isBlank() || sourceId == null || sourceId.isBlank()) {
+            throw new jakarta.ws.rs.BadRequestException("datasetName and sourceId are required");
+        }
         String filename = file.fileName() == null || file.fileName().isBlank() ? "upload" : file.fileName();
         String contentType = file.contentType() == null ? "application/octet-stream" : file.contentType();
         ImportRequest request = new ImportRequest(workspaceId, subjectId, datasetName, sourceId,
