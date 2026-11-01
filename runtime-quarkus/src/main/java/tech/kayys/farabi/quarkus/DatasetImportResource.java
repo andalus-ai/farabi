@@ -10,7 +10,6 @@ import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.core.MediaType;
-import org.eclipse.microprofile.config.inject.ConfigProperty;
 import io.quarkus.security.identity.SecurityIdentity;
 import tech.kayys.farabi.engine.DatasetImportJobPorts.Job;
 import tech.kayys.farabi.jdbc.JdbcDatasetImportJobStore;
