@@ -20,6 +20,8 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import tech.kayys.farabi.engine.DatasetStorageInventoryJobPorts;
 import tech.kayys.farabi.engine.DatasetStorageInventoryJobPorts.Job;
 import tech.kayys.farabi.engine.DatasetStorageInventoryService;
+import tech.kayys.farabi.engine.DatasetStorageCleanupPreviewService;
+import tech.kayys.farabi.engine.DatasetStorageCleanupPreviewService.Plan;
 import tech.kayys.farabi.engine.DatasetStorageInventoryService.FindingType;
 import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.AuditLog;
@@ -34,6 +36,7 @@ import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.Event;
 public class StorageInventoryResource {
     @Inject SecurityIdentity identity;
     @Inject DatasetStorageInventoryService inventory;
+    @Inject DatasetStorageCleanupPreviewService cleanupPreviews;
     @Inject DatasetStorageInventoryJobPorts.Store jobs;
     @Inject DatasetStorageOperatorAuthorizer authorizer;
     @Inject AuditLog audit;
@@ -74,6 +77,32 @@ public class StorageInventoryResource {
         return inventory.recent(workspace, limit).stream().map(this::map).toList();
     }
 
+    /** Creates a persisted dry-run proposal only; this endpoint cannot delete objects. */
+    @POST
+    @Path("/cleanup-previews")
+    public Response previewCleanup(CleanupPreviewRequest request) {
+        String workspace = workspace(); authorize(workspace);
+        if (request == null || request.reportId() == null)
+            return Response.status(400).entity(new ErrorView("reportId is required")).build();
+        String subject = identity.getPrincipal().getName();
+        Plan plan = cleanupPreviews.preview(workspace, request.reportId(), subject);
+        return Response.status(Response.Status.CREATED).entity(plan).build();
+    }
+
+    @GET
+    @Path("/cleanup-previews")
+    public List<Plan> cleanupPreviewHistory(@QueryParam("limit") Integer requestedLimit) {
+        String workspace = workspace(); authorize(workspace);
+        return cleanupPreviews.recent(workspace, requestedLimit == null ? 20 : requestedLimit);
+    }
+
+    @GET
+    @Path("/cleanup-previews/{planId}")
+    public Plan cleanupPreview(@PathParam("planId") UUID planId) {
+        String workspace = workspace(); authorize(workspace);
+        return cleanupPreviews.find(planId, workspace).orElseThrow(jakarta.ws.rs.NotFoundException::new);
+    }
+
     private String workspace() {
         String workspace = identity.getAttribute("workspace_id");
         if (workspace == null || workspace.isBlank()) throw new ForbiddenException("authenticated identity has no workspace scope");
@@ -95,7 +124,7 @@ public class StorageInventoryResource {
                 report.orphanGracePeriod().toSeconds(), report.catalogObjects(), report.providerObjects(),
                 report.consistent(), findings);
     }
-    public record AuditEventView(UUID id, UUID jobId, String actorId, EventType type, int attempt, UUID reportId, String errorCode, Instant occurredAt) {}\n    public record JobView(UUID id, String workspaceId, DatasetStorageInventoryJobPorts.Status status,
+    public record CleanupPreviewRequest(UUID reportId) {}\n    public record AuditEventView(UUID id, UUID jobId, String actorId, EventType type, int attempt, UUID reportId, String errorCode, Instant occurredAt) {}\n    public record JobView(UUID id, String workspaceId, DatasetStorageInventoryJobPorts.Status status,
             int attempts, int maxAttempts, UUID reportId, String errorCode, String errorMessage,
             Instant createdAt, Instant updatedAt) {}
     public record ErrorView(String message) {}
