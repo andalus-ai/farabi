@@ -3,6 +3,7 @@ package tech.kayys.farabi.engine;
 import java.time.Instant;
 import java.util.List;
 import java.util.Optional;
+import java.util.UUID;
 
 /** Provider-neutral, workspace-scoped object inventory; implementations must never cross workspace boundaries. */
 public final class DatasetStorageInventoryPorts {
@@ -24,6 +25,11 @@ public final class DatasetStorageInventoryPorts {
 
     public interface DatasetReferences {
         List<DatasetReference> listActive(String workspaceId);
+    }
+
+    public interface Reports {
+        void save(DatasetStorageInventoryService.Report report);
+        List<DatasetStorageInventoryService.Report> recent(String workspaceId, int limit);
     }
 
     public interface Inventory {
