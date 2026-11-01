@@ -9,6 +9,9 @@ import java.security.NoSuchAlgorithmException;
 import java.time.Clock;
 import java.util.HexFormat;
 import java.util.Map;
+import java.util.ArrayList;
+import java.util.List;
+import java.util.Optional;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -19,6 +22,8 @@ import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import software.amazon.awssdk.services.s3.model.ListObjectsV2Request;
+import software.amazon.awssdk.services.s3.model.S3Exception;
 import software.amazon.awssdk.services.s3.model.ServerSideEncryption;
 import tech.kayys.farabi.engine.DatasetContracts.Format;
 import tech.kayys.farabi.engine.DatasetContracts.Profile;
@@ -27,6 +32,8 @@ import tech.kayys.farabi.engine.DatasetImportPorts.Profiler;
 import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
 import tech.kayys.farabi.engine.DatasetImportPorts.UploadSourceIntake;
 import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
+import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.Inventory;
+import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.ObjectEntry;
 import tech.kayys.farabi.file.LocalFileDatasetAdapter;
 
 /**
@@ -34,7 +41,7 @@ import tech.kayys.farabi.file.LocalFileDatasetAdapter;
  * Uses opaque workspace-hashed keys and server-side encryption; credentials are supplied
  * by the AWS SDK credential provider chain, never stored in Farabi configuration.
  */
-public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Profiler, ObjectStore {
+public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Profiler, ObjectStore, Inventory {
     private final S3Client s3;
     private final String bucket;
     private final Path temporaryRoot;
@@ -148,6 +155,40 @@ public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Pro
         if (ref.endsWith(".jsonl")) return "JSONL";
         if (ref.endsWith(".csv")) return "CSV";
         throw new IllegalArgumentException("unsupported dataset object reference");
+    }
+
+    @Override
+    public Optional<ObjectEntry> inspect(String locationRef, String workspaceId) {
+        StagedSource source = new StagedSource(Format.valueOf(formatFromKey(locationRef)), locationRef);
+        ObjectRef object = resolve(source, workspaceId);
+        try {
+            var head = s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(object.key()).build());
+            return Optional.of(new ObjectEntry(locationRef, head.contentLength(),
+                    head.lastModified() == null ? clock.instant() : head.lastModified()));
+        } catch (S3Exception e) {
+            if (e.statusCode() == 404) return Optional.empty();
+            throw new IllegalStateException("unable to inspect workspace object", e);
+        }
+    }
+
+    @Override
+    public List<ObjectEntry> list(String workspaceId) {
+        if (workspaceId == null || workspaceId.isBlank()) throw new IllegalArgumentException("workspaceId required");
+        String prefix = "datasets/" + sha256(workspaceId) + "/";
+        List<ObjectEntry> entries = new ArrayList<>();
+        String token = null;
+        do {
+            var request = ListObjectsV2Request.builder().bucket(bucket).prefix(prefix)
+                    .continuationToken(token).build();
+            var page = s3.listObjectsV2(request);
+            for (var object : page.contents()) {
+                String ref = "s3://" + bucket + "/" + object.key();
+                entries.add(new ObjectEntry(ref, object.size(),
+                        object.lastModified() == null ? clock.instant() : object.lastModified()));
+            }
+            token = page.isTruncated() ? page.nextContinuationToken() : null;
+        } while (token != null);
+        return List.copyOf(entries);
     }
 
     private ObjectRef resolve(StagedSource source, String workspaceId) {
