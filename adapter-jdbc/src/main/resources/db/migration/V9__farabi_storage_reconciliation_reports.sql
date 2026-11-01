@@ -7,6 +7,7 @@ CREATE TABLE farabi_storage_reconciliation_reports (
  observed_used_bytes BIGINT NOT NULL CHECK(observed_used_bytes>=0),
  ledger_reserved_bytes BIGINT NOT NULL CHECK(ledger_reserved_bytes>=0),
  observed_reserved_bytes BIGINT NOT NULL CHECK(observed_reserved_bytes>=0),
+ committed_reservation_bytes BIGINT NOT NULL CHECK(committed_reservation_bytes>=0),
  finding_types VARCHAR(500) NOT NULL,
  FOREIGN KEY(workspace_id) REFERENCES farabi_workspace_storage(workspace_id)
 );
