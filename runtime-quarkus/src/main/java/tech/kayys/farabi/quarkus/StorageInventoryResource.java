@@ -8,6 +8,7 @@ import io.quarkus.security.identity.SecurityIdentity;
 import jakarta.inject.Inject;
 import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.GET;
+import jakarta.ws.rs.Consumes;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
 import jakarta.ws.rs.PathParam;
@@ -32,6 +33,7 @@ import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.EventType;
 @Path("/api/storage/inventory")
 @Authenticated
 @Produces(MediaType.APPLICATION_JSON)
+@Consumes(MediaType.APPLICATION_JSON)
 public class StorageInventoryResource {
     @Inject SecurityIdentity identity;
     @Inject DatasetStorageInventoryService inventory;
