@@ -56,6 +56,31 @@ class LocalFileDatasetAdapterTest {
                 .stage(new ImportRequest("workspace-a", "user", "x", "upload", Format.CSV, "x.csv", 2048, "text/csv")));
     }
 
+
+    @Test
+    void stagesRequestScopedUploadStreamWithoutUsingGlobalContentProvider() {
+        String csv = "id,name\\n7,Farabi\\n";
+        byte[] bytes = csv.getBytes(StandardCharsets.UTF_8);
+        var adapter = new LocalFileDatasetAdapter(temp,
+                r -> { throw new AssertionError("request stream must be used"); },
+                new LocalFileDatasetAdapter.Limits(1024, 10, 5, 10), Clock.systemUTC());
+        var staged = adapter.stage(request(Format.CSV, csv), new ByteArrayInputStream(bytes));
+        var profile = adapter.profile(UUID.randomUUID(), "workspace-a", staged);
+        assertEquals(1, profile.rowCount());
+        assertEquals(2, profile.columns().size());
+    }
+
+    @Test
+    void rejectsRequestStreamWhenActualLengthDiffersFromMultipartLength() {
+        String csv = "id\\n1\\n";
+        var adapter = new LocalFileDatasetAdapter(temp,
+                r -> { throw new AssertionError("request stream must be used"); },
+                new LocalFileDatasetAdapter.Limits(1024, 10, 5, 10), Clock.systemUTC());
+        var request = request(Format.CSV, csv);
+        assertThrows(IllegalArgumentException.class,
+                () -> adapter.stage(request, new ByteArrayInputStream("id\\n".getBytes(StandardCharsets.UTF_8))));
+    }
+
     private LocalFileDatasetAdapter adapter(String value) {
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         return new LocalFileDatasetAdapter(temp, r -> new ByteArrayInputStream(bytes),
