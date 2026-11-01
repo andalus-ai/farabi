@@ -26,6 +26,7 @@ import tech.kayys.farabi.engine.DatasetImportPorts.ImportRequest;
 import tech.kayys.farabi.engine.DatasetImportPorts.Profiler;
 import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
 import tech.kayys.farabi.engine.DatasetImportPorts.UploadSourceIntake;
+import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
 import tech.kayys.farabi.file.LocalFileDatasetAdapter;
 
 /**
@@ -33,7 +34,7 @@ import tech.kayys.farabi.file.LocalFileDatasetAdapter;
  * Uses opaque workspace-hashed keys and server-side encryption; credentials are supplied
  * by the AWS SDK credential provider chain, never stored in Farabi configuration.
  */
-public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Profiler {
+public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Profiler, ObjectStore {
     private final S3Client s3;
     private final String bucket;
     private final Path temporaryRoot;
@@ -129,6 +130,19 @@ public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Pro
     public void delete(StagedSource source, String workspaceId) {
         ObjectRef object = resolve(source, workspaceId);
         s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(object.key()).build());
+    }
+
+    @Override
+    public void delete(String locationRef, String workspaceId) {
+        delete(new StagedSource(Format.valueOf(formatFromKey(locationRef)), locationRef), workspaceId);
+    }
+
+    private static String formatFromKey(String ref) {
+        if (ref.endsWith(".tsv")) return "TSV";
+        if (ref.endsWith(".json")) return "JSON";
+        if (ref.endsWith(".jsonl")) return "JSONL";
+        if (ref.endsWith(".csv")) return "CSV";
+        throw new IllegalArgumentException("unsupported dataset object reference");
     }
 
     private ObjectRef resolve(StagedSource source, String workspaceId) {
