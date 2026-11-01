@@ -24,6 +24,7 @@ class DatasetStorageCleanupPreviewServiceTest {
                     new Finding(FindingType.ORPHAN_OBJECT,"orphan-a",0,100,NOW.minus(Duration.ofHours(3))),
                     new Finding(FindingType.ORPHAN_OBJECT,"became-referenced",0,200,NOW.minus(Duration.ofHours(3))),
                     new Finding(FindingType.ORPHAN_OBJECT,"changed-size",0,300,NOW.minus(Duration.ofHours(3))),
+                    new Finding(FindingType.ORPHAN_OBJECT,"changed-time",0,500,NOW.minus(Duration.ofHours(3))),
                     new Finding(FindingType.ORPHAN_OBJECT,"too-young",0,400,NOW.minus(Duration.ofMinutes(10)))));
         Reports reports=new Reports() {
             public void save(Report ignored) {}
@@ -36,6 +37,7 @@ class DatasetStorageCleanupPreviewServiceTest {
                 if(ref.equals("orphan-a")) return Optional.of(new ObjectEntry(ref,100,NOW.minus(Duration.ofHours(3))));
                 if(ref.equals("became-referenced")) return Optional.of(new ObjectEntry(ref,200,NOW.minus(Duration.ofHours(3))));
                 if(ref.equals("changed-size")) return Optional.of(new ObjectEntry(ref,301,NOW.minus(Duration.ofHours(3))));
+                if(ref.equals("changed-time")) return Optional.of(new ObjectEntry(ref,500,NOW.minus(Duration.ofHours(2))));
                 if(ref.equals("too-young")) return Optional.of(new ObjectEntry(ref,400,NOW.minus(Duration.ofMinutes(10))));
                 return Optional.empty();
             }
