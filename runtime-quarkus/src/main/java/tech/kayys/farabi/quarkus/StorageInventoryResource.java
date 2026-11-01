@@ -10,59 +10,78 @@ import jakarta.ws.rs.ForbiddenException;
 import jakarta.ws.rs.GET;
 import jakarta.ws.rs.POST;
 import jakarta.ws.rs.Path;
+import jakarta.ws.rs.PathParam;
+import jakarta.ws.rs.HeaderParam;
 import jakarta.ws.rs.Produces;
 import jakarta.ws.rs.QueryParam;
 import jakarta.ws.rs.core.MediaType;
+import jakarta.ws.rs.core.Response;
+import org.eclipse.microprofile.config.inject.ConfigProperty;
+import tech.kayys.farabi.engine.DatasetStorageInventoryJobPorts;
+import tech.kayys.farabi.engine.DatasetStorageInventoryJobPorts.Job;
 import tech.kayys.farabi.engine.DatasetStorageInventoryService;
 import tech.kayys.farabi.engine.DatasetStorageInventoryService.FindingType;
 import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
 
-/** Operator-only inventory inspection and history. The default authorizer denies all requests. */
+/** Operator-only asynchronous inventory API. Workspace is always derived from the authenticated identity. */
 @Path("/api/storage/inventory")
 @Authenticated
 @Produces(MediaType.APPLICATION_JSON)
 public class StorageInventoryResource {
     @Inject SecurityIdentity identity;
     @Inject DatasetStorageInventoryService inventory;
+    @Inject DatasetStorageInventoryJobPorts.Store jobs;
     @Inject DatasetStorageOperatorAuthorizer authorizer;
+    @ConfigProperty(name="farabi.storage.inventory.max-attempts", defaultValue="4") int maxAttempts;
 
     @POST
-    public InventoryReport inspect() {
-        String workspace = workspace();
-        authorize(workspace);
-        return map(inventory.inspect(workspace));
+    public Response submit(@HeaderParam("Idempotency-Key") String idempotencyKey) {
+        String workspace = workspace(); authorize(workspace);
+        if (idempotencyKey == null || idempotencyKey.isBlank() || idempotencyKey.length() > 200)
+            return Response.status(400).entity(new ErrorView("Idempotency-Key header is required (max 200 characters)")).build();
+        Job job = jobs.enqueue(workspace, idempotencyKey, maxAttempts, Instant.now());
+        return Response.accepted(map(job)).build();
+    }
+
+    @GET
+    @Path("/{jobId}")
+    public JobView status(@PathParam("jobId") UUID jobId) {
+        String workspace = workspace(); authorize(workspace);
+        return jobs.find(jobId, workspace).map(this::map).orElseThrow(jakarta.ws.rs.NotFoundException::new);
     }
 
     @GET
     public List<InventoryReport> recent(@QueryParam("limit") Integer requestedLimit) {
-        String workspace = workspace();
-        authorize(workspace);
+        String workspace = workspace(); authorize(workspace);
         int limit = requestedLimit == null ? 20 : requestedLimit;
         return inventory.recent(workspace, limit).stream().map(this::map).toList();
     }
 
     private String workspace() {
         String workspace = identity.getAttribute("workspace_id");
-        if (workspace == null || workspace.isBlank())
-            throw new ForbiddenException("authenticated identity has no workspace scope");
+        if (workspace == null || workspace.isBlank()) throw new ForbiddenException("authenticated identity has no workspace scope");
         return workspace;
     }
-
     private void authorize(String workspace) {
         String subject = identity.getPrincipal() == null ? null : identity.getPrincipal().getName();
         if (subject == null || subject.isBlank()) throw new ForbiddenException("authenticated subject is required");
         authorizer.authorize(subject, workspace);
     }
-
+    private JobView map(Job j) {
+        return new JobView(j.id(), j.workspaceId(), j.status(), j.attempts(), j.maxAttempts(),
+                j.reportId(), j.errorCode(), j.errorMessage(), j.createdAt(), j.updatedAt());
+    }
     private InventoryReport map(DatasetStorageInventoryService.Report report) {
         List<FindingView> findings = report.findings().stream()
-                .map(f -> new FindingView(f.type(), f.locationRef(), f.expectedBytes(), f.actualBytes(),
-                        f.objectLastModified())).toList();
+                .map(f -> new FindingView(f.type(), f.locationRef(), f.expectedBytes(), f.actualBytes(), f.objectLastModified())).toList();
         return new InventoryReport(report.id(), report.workspaceId(), report.inspectedAt(),
                 report.orphanGracePeriod().toSeconds(), report.catalogObjects(), report.providerObjects(),
                 report.consistent(), findings);
     }
-
+    public record JobView(UUID id, String workspaceId, DatasetStorageInventoryJobPorts.Status status,
+            int attempts, int maxAttempts, UUID reportId, String errorCode, String errorMessage,
+            Instant createdAt, Instant updatedAt) {}
+    public record ErrorView(String message) {}
     public record InventoryReport(UUID id, String workspaceId, Instant inspectedAt, long orphanGraceSeconds,
             int catalogObjects, int providerObjects, boolean consistent, List<FindingView> findings) {}
     public record FindingView(FindingType type, String locationRef, long expectedBytes, long actualBytes,
