@@ -79,7 +79,8 @@ public final class JdbcDatasetCatalog implements Catalog {
     @Override
     public void saveProfile(Profile profile) {
         Objects.requireNonNull(profile, "profile");
-        String update = "UPDATE farabi_dataset_profiles SET row_count=?,profiled_at=?,profiler_version=? WHERE dataset_id=? AND workspace_id=?";\n        String parent = "INSERT INTO farabi_dataset_profiles(dataset_id,workspace_id,row_count,profiled_at,profiler_version) VALUES(?,?,?,?,?)";
+        String update = "UPDATE farabi_dataset_profiles SET row_count=?,profiled_at=?,profiler_version=? WHERE dataset_id=? AND workspace_id=?";
+        String parent = "INSERT INTO farabi_dataset_profiles(dataset_id,workspace_id,row_count,profiled_at,profiler_version) VALUES(?,?,?,?,?)";
         String delete = "DELETE FROM farabi_dataset_profile_columns WHERE dataset_id=? AND workspace_id=?";
         String insert = "INSERT INTO farabi_dataset_profile_columns(dataset_id,workspace_id,ordinal,name,logical_type,nullable,null_count,distinct_count) VALUES(?,?,?,?,?,?,?,?)";
         try (Connection c = source.getConnection()) {
