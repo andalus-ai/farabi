@@ -42,7 +42,7 @@ class DatasetStorageInventoryWorkerTest {
                     public List<Report> recent(String workspace, int limit) { return List.copyOf(saved); }
                 });
         DatasetStorageInventoryWorker worker = new DatasetStorageInventoryWorker(
-                "worker-a", store, inventory, Clock.fixed(now, ZoneOffset.UTC), Duration.ofMinutes(2));
+                "worker-a", store, inventory, Clock.fixed(now, ZoneOffset.UTC), Duration.ofMinutes(2), event -> { });
 
         assertTrue(worker.runOne());
         assertEquals(token, completedToken[0]);
