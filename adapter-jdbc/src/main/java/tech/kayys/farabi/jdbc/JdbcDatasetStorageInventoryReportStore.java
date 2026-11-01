@@ -69,6 +69,33 @@ public final class JdbcDatasetStorageInventoryReportStore implements Reports {
         }
     }
 
+    @Override public java.util.Optional<Report> find(java.util.UUID reportId, String workspaceId) {
+        if (reportId == null || workspaceId == null || workspaceId.isBlank())
+            throw new IllegalArgumentException("reportId and workspaceId required");
+        String sql = "SELECT id,workspace_id,inspected_at,orphan_grace_seconds,catalog_objects,provider_objects FROM farabi_storage_inventory_reports WHERE id=? AND workspace_id=?";
+        try (Connection c=source.getConnection(); PreparedStatement p=c.prepareStatement(sql)) {
+            p.setObject(1, reportId); p.setString(2, workspaceId);
+            try (ResultSet r=p.executeQuery()) {
+                if (!r.next()) return java.util.Optional.empty();
+                List<Finding> findings = new ArrayList<>();
+                try (PreparedStatement d=c.prepareStatement("SELECT finding_type,location_ref,expected_bytes,actual_bytes,object_last_modified FROM farabi_storage_inventory_findings WHERE report_id=? AND workspace_id=? ORDER BY finding_index")) {
+                    d.setObject(1, reportId); d.setString(2, workspaceId);
+                    try (ResultSet rows=d.executeQuery()) {
+                        while (rows.next()) {
+                            Timestamp modified=rows.getTimestamp("object_last_modified");
+                            findings.add(new Finding(FindingType.valueOf(rows.getString("finding_type")),
+                                    rows.getString("location_ref"), rows.getLong("expected_bytes"),
+                                    rows.getLong("actual_bytes"), modified==null?null:modified.toInstant()));
+                        }
+                    }
+                }
+                return java.util.Optional.of(new Report(reportId, workspaceId, r.getTimestamp("inspected_at").toInstant(),
+                        Duration.ofSeconds(r.getLong("orphan_grace_seconds")), r.getInt("catalog_objects"),
+                        r.getInt("provider_objects"), findings));
+            }
+        } catch (SQLException e) { throw new IllegalStateException("read storage inventory report failed", e); }
+    }
+
     @Override public List<Report> recent(String workspaceId, int limit) {
         if (workspaceId == null || workspaceId.isBlank()) throw new IllegalArgumentException("workspaceId required");
         if (limit < 1 || limit > 100) throw new IllegalArgumentException("limit must be between 1 and 100");
