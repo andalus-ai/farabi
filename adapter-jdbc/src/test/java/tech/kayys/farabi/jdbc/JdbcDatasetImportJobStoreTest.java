@@ -20,7 +20,7 @@ class JdbcDatasetImportJobStoreTest {
         store=new JdbcDatasetImportJobStore(source);
         try(Connection c=source.getConnection();Statement s=c.createStatement()){
             s.execute("CREATE TABLE farabi_datasets(id UUID PRIMARY KEY, workspace_id VARCHAR(200) NOT NULL, name VARCHAR(300) NOT NULL, source_id VARCHAR(200) NOT NULL, format VARCHAR(40) NOT NULL, location_ref VARCHAR(2000) NOT NULL, lifecycle VARCHAR(40) NOT NULL, created_at TIMESTAMP WITH TIME ZONE NOT NULL, updated_at TIMESTAMP WITH TIME ZONE NOT NULL)");
-            s.execute("CREATE TABLE farabi_dataset_import_jobs(id UUID PRIMARY KEY, workspace_id VARCHAR(200) NOT NULL, dataset_id UUID NOT NULL, idempotency_key VARCHAR(200) NOT NULL, status VARCHAR(20) NOT NULL, attempts INTEGER NOT NULL, max_attempts INTEGER NOT NULL, lease_owner VARCHAR(200), lease_token UUID, lease_until TIMESTAMP WITH TIME ZONE, error_code VARCHAR(100), error_message VARCHAR(2000), created_at TIMESTAMP WITH TIME ZONE NOT NULL, updated_at TIMESTAMP WITH TIME ZONE NOT NULL, UNIQUE(workspace_id,idempotency_key), FOREIGN KEY(dataset_id) REFERENCES farabi_datasets(id))");
+            s.execute("CREATE TABLE farabi_dataset_import_jobs(id UUID PRIMARY KEY, workspace_id VARCHAR(200) NOT NULL, dataset_id UUID NOT NULL, idempotency_key VARCHAR(200) NOT NULL, status VARCHAR(20) NOT NULL, attempts INTEGER NOT NULL, max_attempts INTEGER NOT NULL, lease_owner VARCHAR(200), lease_token UUID, lease_until TIMESTAMP WITH TIME ZONE, available_at TIMESTAMP WITH TIME ZONE NOT NULL, error_code VARCHAR(100), error_message VARCHAR(2000), created_at TIMESTAMP WITH TIME ZONE NOT NULL, updated_at TIMESTAMP WITH TIME ZONE NOT NULL, UNIQUE(workspace_id,idempotency_key), FOREIGN KEY(dataset_id) REFERENCES farabi_datasets(id))");
             s.execute("INSERT INTO farabi_datasets VALUES('00000000-0000-0000-0000-000000000001','ws','data','source','CSV','file://x','REGISTERED',CURRENT_TIMESTAMP,CURRENT_TIMESTAMP)");
         }
     }
@@ -35,9 +35,11 @@ class JdbcDatasetImportJobStoreTest {
         assertEquals(Status.RUNNING,claimed.status());
         assertEquals(1,claimed.attempts());
         assertFalse(store.complete(claimed.id(),UUID.randomUUID(),now.plusSeconds(2)));
-        assertTrue(store.fail(claimed.id(),claimed.leaseToken(),"TEMPORARY","retry",now.plusSeconds(2)));
+        assertTrue(store.renew(claimed.id(),claimed.leaseToken(),now.plusSeconds(60),now.plusSeconds(1)));
+        assertTrue(store.fail(claimed.id(),claimed.leaseToken(),"TEMPORARY","retry",now.plusSeconds(7),now.plusSeconds(2)));
         assertEquals(Status.QUEUED,store.find(claimed.id(),"ws").orElseThrow().status());
-        Job second=store.claim(new Lease("worker-b",now.plusSeconds(3),now.plusSeconds(33))).orElseThrow();
+        assertTrue(store.claim(new Lease("worker-b",now.plusSeconds(6),now.plusSeconds(36))).isEmpty());
+        Job second=store.claim(new Lease("worker-b",now.plusSeconds(8),now.plusSeconds(38))).orElseThrow();
         assertTrue(store.complete(second.id(),second.leaseToken(),now.plusSeconds(4)));
         assertEquals(Status.SUCCEEDED,store.find(second.id(),"ws").orElseThrow().status());
         assertFalse(store.complete(second.id(),second.leaseToken(),now.plusSeconds(5)));
