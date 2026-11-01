@@ -27,7 +27,6 @@ import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.AuditLog;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.Event;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.EventType;
-import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.Event;
 
 /** Operator-only asynchronous inventory API. Workspace is always derived from the authenticated identity. */
 @Path("/api/storage/inventory")
@@ -85,8 +84,12 @@ public class StorageInventoryResource {
         if (request == null || request.reportId() == null)
             return Response.status(400).entity(new ErrorView("reportId is required")).build();
         String subject = identity.getPrincipal().getName();
-        Plan plan = cleanupPreviews.preview(workspace, request.reportId(), subject);
-        return Response.status(Response.Status.CREATED).entity(plan).build();
+        try {
+            Plan plan = cleanupPreviews.preview(workspace, request.reportId(), subject);
+            return Response.status(Response.Status.CREATED).entity(plan).build();
+        } catch (IllegalArgumentException missing) {
+            throw new jakarta.ws.rs.NotFoundException("inventory report not found in workspace");
+        }
     }
 
     @GET
