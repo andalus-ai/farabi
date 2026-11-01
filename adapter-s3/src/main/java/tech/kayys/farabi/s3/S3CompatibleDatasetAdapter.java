@@ -78,7 +78,12 @@ public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Pro
                                     "farabi-format", request.format().name()))
                             .build(),
                     RequestBody.fromInputStream(upload, request.contentLength()));
-            return new StagedSource(request.format(), "s3://" + bucket + "/" + key);
+            long storedBytes = s3.headObject(HeadObjectRequest.builder().bucket(bucket).key(key).build()).contentLength();
+            if (storedBytes != request.contentLength()) {
+                s3.deleteObject(DeleteObjectRequest.builder().bucket(bucket).key(key).build());
+                throw new IllegalStateException("stored object size differs from declared upload size");
+            }
+            return new StagedSource(request.format(), "s3://" + bucket + "/" + key, storedBytes);
         } catch (RuntimeException e) {
             throw new IllegalStateException("unable to stage dataset in object storage", e);
         } catch (java.io.IOException e) {
