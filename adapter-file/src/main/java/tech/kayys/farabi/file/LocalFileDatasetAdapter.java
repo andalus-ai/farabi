@@ -12,6 +12,11 @@ import java.nio.charset.StandardCharsets;
 import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.LinkOption;
+import java.nio.file.attribute.FileTime;
+import java.time.Instant;
+import java.util.Comparator;
+import java.util.Optional;
 import java.nio.file.StandardCopyOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -33,13 +38,15 @@ import tech.kayys.farabi.engine.DatasetImportPorts.ImportRequest;
 import tech.kayys.farabi.engine.DatasetImportPorts.Profiler;
 import tech.kayys.farabi.engine.DatasetImportPorts.UploadSourceIntake;
 import tech.kayys.farabi.engine.DatasetImportPorts.StagedSource;
+import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.Inventory;
+import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.ObjectEntry;
 
 /**
  * Bounded local-filesystem adapter for CSV, JSON object arrays and JSONL.
  * It is suitable for development/single-node deployments; production deployments should
  * replace it with an encrypted object-storage adapter implementing the same ports.
  */
-public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profiler {
+public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profiler, Inventory {
     @FunctionalInterface
     public interface ContentProvider {
         InputStream open(ImportRequest request) throws IOException;
@@ -220,6 +227,82 @@ public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profil
         }
     }
 
+    @Override
+    public Optional<ObjectEntry> inspect(String locationRef, String workspaceId) {
+        StagedSource source = sourceFromReference(locationRef, workspaceId);
+        Path file = resolve(source, workspaceId);
+        try {
+            return Optional.of(new ObjectEntry(locationRef, Files.size(file),
+                    Files.getLastModifiedTime(file, LinkOption.NOFOLLOW_LINKS).toInstant()));
+        } catch (IOException e) {
+            throw new IllegalStateException("unable to inspect local dataset object", e);
+        }
+    }
+
+    @Override
+    public List<ObjectEntry> list(String workspaceId) {
+        if (workspaceId == null || workspaceId.isBlank()) throw new IllegalArgumentException("workspaceId required");
+        Path directory = workspaceDirectory(workspaceId);
+        if (!Files.exists(directory, LinkOption.NOFOLLOW_LINKS)) return List.of();
+        if (Files.isSymbolicLink(directory) || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS))
+            throw new SecurityException("workspace storage directory is not a safe directory");
+        try (var paths = Files.list(directory)) {
+            List<ObjectEntry> result = new ArrayList<>();
+            for (Path path : paths.toList()) {
+                if (Files.isSymbolicLink(path) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) continue;
+                String name = path.getFileName().toString();
+                Format format = formatFromExtension(name);
+                if (format == null) continue;
+                String id = name.substring(0, name.lastIndexOf('.'));
+                try { UUID.fromString(id); } catch (IllegalArgumentException ignored) { continue; }
+                result.add(new ObjectEntry("local-file:" + workspaceId + ":" + id,
+                        Files.size(path), Files.getLastModifiedTime(path, LinkOption.NOFOLLOW_LINKS).toInstant()));
+            }
+            result.sort(Comparator.comparing(ObjectEntry::locationRef));
+            return List.copyOf(result);
+        } catch (IOException e) {
+            throw new IllegalStateException("unable to list workspace dataset objects", e);
+        }
+    }
+
+    private StagedSource sourceFromReference(String ref, String workspaceId) {
+        if (ref == null || workspaceId == null || workspaceId.isBlank())
+            throw new IllegalArgumentException("object reference and workspace required");
+        String[] parts = ref.split(":", 3);
+        if (parts.length != 3 || !"local-file".equals(parts[0]) || !workspaceId.equals(parts[1]))
+            throw new SecurityException("object reference does not belong to workspace");
+        UUID.fromString(parts[2]);
+        Path directory = workspaceDirectory(workspaceId);
+        if (Files.isSymbolicLink(root) || Files.isSymbolicLink(directory))
+            throw new SecurityException("symbolic links are not permitted in dataset storage");
+        try (var paths = Files.list(directory)) {
+            // Existence is checked by resolve; this only validates the identifier and workspace scope.
+        } catch (IOException | java.nio.file.NoSuchFileException ignored) {
+            // An absent workspace directory means the referenced object is absent.
+        }
+        String fileName = parts[2] + ".";
+        Format format = null;
+        for (Format candidate : List.of(Format.CSV, Format.TSV, Format.JSON, Format.JSONL)) {
+            if (Files.exists(directory.resolve(parts[2] + extension(candidate)), LinkOption.NOFOLLOW_LINKS)) {
+                format = candidate; break;
+            }
+        }
+        if (format == null) throw new java.nio.file.NoSuchFileException(ref);
+        return new StagedSource(format, ref);
+    }
+
+    private static String extension(Format format) {
+        return switch (format) { case TSV -> ".tsv"; case JSON -> ".json"; case JSONL -> ".jsonl"; default -> ".csv"; };
+    }
+
+    private static Format formatFromExtension(String name) {
+        if (name.endsWith(".csv")) return Format.CSV;
+        if (name.endsWith(".tsv")) return Format.TSV;
+        if (name.endsWith(".json")) return Format.JSON;
+        if (name.endsWith(".jsonl")) return Format.JSONL;
+        return null;
+    }
+
     private Path resolve(StagedSource source, String workspaceId) {
         String[] parts = source.locationRef().split(":", 3);
         if (parts.length != 3 || !"local-file".equals(parts[0]) || !workspaceId.equals(parts[1])) {
@@ -236,7 +319,7 @@ public final class LocalFileDatasetAdapter implements UploadSourceIntake, Profil
         };
         Path directory = workspaceDirectory(workspaceId);
         Path path = directory.resolve(id + suffix).normalize();
-        if (!path.startsWith(directory) || !Files.isRegularFile(path)) throw new IllegalArgumentException("staged source not found");
+        if (!path.startsWith(directory) || !Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(path)) throw new IllegalArgumentException("staged source not found");
         return path;
     }
 
