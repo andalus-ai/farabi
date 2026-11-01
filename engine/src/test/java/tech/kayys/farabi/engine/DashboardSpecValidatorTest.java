@@ -71,6 +71,16 @@ class DashboardSpecValidatorTest {
         assertTrue(result.valid(), result.issues().toString());
     }
 
+    @Test void rejectsChartsWithExcessiveFilterPredicates() {
+        List<Filter> filters = java.util.stream.IntStream.range(0, StructuredQueryCompiler.MAX_FILTERS + 1)
+            .mapToObj(i -> new Filter("region", "eq", "R" + i)).toList();
+        var excessive = new ChartSpec("many-filters", Kind.KPI, "Revenue",
+            new Binding("orders", null, "revenue", null), filters);
+        var result = validator.validate("ws", "alice", spec(excessive));
+        assertTrue(codes(result).contains("TOO_MANY_FILTERS"));
+        assertFalse(result.valid());
+    }
+
     @Test void layoutNeverOverlapsForAnyMix() {
         List<ChartSpec> mix = new ArrayList<>();
         Kind[] kinds = {Kind.KPI, Kind.KPI, Kind.BAR, Kind.TABLE, Kind.KPI, Kind.LINE, Kind.PIE, Kind.BAR, Kind.KPI, Kind.TABLE};
