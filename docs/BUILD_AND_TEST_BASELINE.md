@@ -49,6 +49,9 @@ The inventory is based on source paths, not a Surefire test-case count. The succ
 
 ## Recommended next quality gates
 
+See the [Runtime Security Test Plan](RUNTIME_SECURITY_TEST_PLAN.md) for concrete cases and implementation order covering identity resolution, deny-by-default behavior, workspace isolation, and authorization-before-fetch.
+
+
 1. Add runtime-core composition tests for adapter wiring and lifecycle behavior.
 2. Add runtime-quarkus tests for authentication context mapping, deny-by-default behavior, request validation, and workspace isolation.
 3. Add contract tests for the Andalus Runtime proposal adapter before enabling a live model/runtime.
