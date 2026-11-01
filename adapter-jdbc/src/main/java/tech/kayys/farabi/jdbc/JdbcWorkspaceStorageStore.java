@@ -74,6 +74,17 @@ public final class JdbcWorkspaceStorageStore implements QuotaStore {
         }catch(SQLException e){throw new IllegalStateException("release workspace storage reservation failed",e);}
     }
 
+
+    /** Administrative quota change; refuses to undercut committed or reserved bytes. */
+    public boolean setQuota(String workspace,long quotaBytes,Instant now) {
+        if(workspace==null||workspace.isBlank()||quotaBytes<0)throw new IllegalArgumentException("invalid workspace quota");
+        try(Connection c=source.getConnection();PreparedStatement p=c.prepareStatement(
+                "UPDATE farabi_workspace_storage SET quota_bytes=?,updated_at=? WHERE workspace_id=? AND used_bytes+reserved_bytes<=?")){
+            p.setLong(1,quotaBytes);p.setTimestamp(2,Timestamp.from(now));p.setString(3,workspace);p.setLong(4,quotaBytes);
+            return p.executeUpdate()==1;
+        }catch(SQLException e){throw new IllegalStateException("update workspace storage quota failed",e);}
+    }
+
     public static final class StorageQuotaExceededException extends RuntimeException {
         public StorageQuotaExceededException(String message){super(message);}
     }
