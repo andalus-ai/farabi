@@ -29,6 +29,11 @@ public final class DatasetStorageInventoryWorker {
     }
     public boolean runOne() {
         var now = clock.instant();
+        // Reap separately from claim so terminal lease expiry is observable and auditable.
+        for (Job expired : jobs.failExpiredLeases(now)) {
+            audit.append(new Event(UUID.randomUUID(), expired.workspaceId(), expired.id(), workerId,
+                    EventType.FAILED, expired.attempts(), null, "LEASE_EXHAUSTED", now));
+        }
         Job job = jobs.claim(new Lease(workerId, now, now.plus(leaseDuration))).orElse(null);
         if (job == null) return false;
         try {
