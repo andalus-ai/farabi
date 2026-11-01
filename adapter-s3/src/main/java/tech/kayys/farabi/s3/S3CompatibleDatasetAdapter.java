@@ -14,6 +14,7 @@ import java.util.UUID;
 
 import software.amazon.awssdk.core.sync.RequestBody;
 import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.ChecksumAlgorithm;
 import software.amazon.awssdk.services.s3.model.DeleteObjectRequest;
 import software.amazon.awssdk.services.s3.model.GetObjectRequest;
 import software.amazon.awssdk.services.s3.model.HeadObjectRequest;
@@ -71,6 +72,7 @@ public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Pro
                             .contentLength(request.contentLength())
                             .contentType(request.contentType())
                             .serverSideEncryption(ServerSideEncryption.AES256)
+                            .checksumAlgorithm(ChecksumAlgorithm.SHA256)
                             .metadata(Map.of("farabi-workspace", workspaceKey,
                                     "farabi-format", request.format().name()))
                             .build(),
