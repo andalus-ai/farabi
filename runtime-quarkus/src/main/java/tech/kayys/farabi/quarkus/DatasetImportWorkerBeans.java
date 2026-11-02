@@ -35,6 +35,8 @@ import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
 import tech.kayys.farabi.engine.DatasetDeletionApprovalAuthorizer;
 import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.Inventory;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageReferenceStore;
+import tech.kayys.farabi.jdbc.JdbcDatasetDeletionReconciliationStore;
+import tech.kayys.farabi.engine.DatasetDeletionReconciliationService;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryReportStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryJobStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryAuditLog;
@@ -65,6 +67,11 @@ public class DatasetImportWorkerBeans {
         return new DatasetStorageReconciliationService(store, Clock.systemUTC());
     }
     @Produces @Singleton JdbcDatasetStorageReferenceStore datasetStorageReferences(DataSource source) { return new JdbcDatasetStorageReferenceStore(source); }
+    @Produces @Singleton JdbcDatasetDeletionReconciliationStore datasetDeletionReconciliationStore(DataSource source) { return new JdbcDatasetDeletionReconciliationStore(source); }
+    @Produces @Singleton DatasetDeletionReconciliationService datasetDeletionReconciliationService(
+            JdbcDatasetDeletionReconciliationStore reports, Inventory inventory) {
+        return new DatasetDeletionReconciliationService(reports, inventory, Clock.systemUTC());
+    }
     @Produces @Singleton JdbcDatasetStorageInventoryReportStore storageInventoryReportStore(DataSource source) {
         return new JdbcDatasetStorageInventoryReportStore(source);
     }
