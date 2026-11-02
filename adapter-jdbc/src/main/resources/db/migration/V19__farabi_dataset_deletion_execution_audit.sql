@@ -4,7 +4,7 @@ CREATE TABLE farabi_dataset_deletion_execution_audit (
     workspace_id VARCHAR(200) NOT NULL,
     dataset_id UUID NOT NULL,
     event_type VARCHAR(32) NOT NULL CHECK (event_type IN
-        ('CLAIMED','RETRY_SCHEDULED','FAILED','LEASE_EXHAUSTED','SUCCEEDED')),
+        ('CLAIMED','LEASE_EXPIRED','RETRY_SCHEDULED','FAILED','LEASE_EXHAUSTED','SUCCEEDED')),
     attempt INTEGER NOT NULL CHECK (attempt >= 0),
     worker_id VARCHAR(300),
     lease_token UUID,
