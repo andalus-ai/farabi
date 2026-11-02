@@ -45,5 +45,7 @@ public final class DatasetStorageLifecyclePorts {
     public interface ObjectStore {
         /** Must validate that the opaque location reference belongs to workspaceId. */
         void delete(String locationRef, String workspaceId);
+        /** Returns true only when a workspace-scoped provider lookup confirms the object exists. */
+        boolean exists(String locationRef, String workspaceId);
     }
 }
