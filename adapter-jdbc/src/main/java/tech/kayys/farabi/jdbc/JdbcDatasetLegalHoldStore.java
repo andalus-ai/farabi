@@ -23,6 +23,10 @@ public final class JdbcDatasetLegalHoldStore {
                     p.setObject(1,datasetId);p.setString(2,workspace);
                     try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("dataset not found");}
                 }
+                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_deletions WHERE dataset_id=? AND workspace_id=? AND status='RUNNING' LIMIT 1")) {
+                    p.setObject(1,datasetId);p.setString(2,workspace);
+                    try(ResultSet r=p.executeQuery()){if(r.next())throw new IllegalStateException("deletion is already in progress; legal hold cannot be placed safely");}
+                }
                 try(PreparedStatement p=c.prepareStatement("SELECT * FROM farabi_dataset_legal_holds WHERE dataset_id=? AND workspace_id=? AND released_at IS NULL FOR UPDATE")) {
                     p.setObject(1,datasetId);p.setString(2,workspace);
                     try(ResultSet r=p.executeQuery()){if(r.next())throw new IllegalStateException("dataset already has an active legal hold");}
