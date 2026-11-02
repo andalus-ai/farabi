@@ -69,7 +69,9 @@ the fail-closed storage operator authorizer):
 The preview is read-only. It lists datasets whose applicable retention clock has elapsed and
 marks active legal holds separately. Active exemptions suppress a dataset from the preview.
 No policy means no deletion: deletion requests fail closed unless an effective policy exists
-or an explicit active exemption applies. An active legal hold independently blocks deletion,
+or an explicit active exemption applies. The deletion worker re-evaluates the effective
+policy and exemption expiry at claim time, so an exemption that expires while a job is queued
+does not authorize a later deletion. An active legal hold independently blocks deletion,
 even if retention has elapsed or an exemption exists.
 
 Retention policies establish minimum preservation periods; they do not automatically delete
