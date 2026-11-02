@@ -10,6 +10,8 @@ import jakarta.ws.rs.core.MediaType;
 import jakarta.ws.rs.core.Response;
 import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
 import tech.kayys.farabi.engine.DatasetStorageQuotaRepairPreviewService;
+import tech.kayys.farabi.engine.DatasetStorageQuotaRepairApplicationService;
+import tech.kayys.farabi.engine.DatasetStorageQuotaRepairApplicationService.Application;
 import tech.kayys.farabi.engine.DatasetStorageQuotaRepairPreviewService.Plan;
 
 /** Operator-only, workspace-scoped quota repair proposals. No mutation endpoint is exposed. */
@@ -19,6 +21,7 @@ import tech.kayys.farabi.engine.DatasetStorageQuotaRepairPreviewService.Plan;
 public class StorageQuotaRepairPreviewResource {
     @Inject SecurityIdentity identity;
     @Inject DatasetStorageQuotaRepairPreviewService previews;
+    @Inject DatasetStorageQuotaRepairApplicationService applications;
     @Inject DatasetStorageOperatorAuthorizer authorizer;
 
     @POST
@@ -32,6 +35,13 @@ public class StorageQuotaRepairPreviewResource {
     public List<Plan> recent(@QueryParam("limit") Integer requestedLimit) {
         String workspace=workspace(); authorize(workspace);
         return previews.recent(workspace,requestedLimit==null?20:requestedLimit);
+    }
+
+    /** Explicit operator approval: applies only after a transactional stale-state recheck. */
+    @POST @Path("/{planId}/apply")
+    public Application apply(@PathParam("planId") UUID id) {
+        String workspace=workspace(); authorize(workspace);
+        return applications.approveAndApply(id,workspace,identity.getPrincipal().getName());
     }
 
     @GET @Path("/{planId}")
