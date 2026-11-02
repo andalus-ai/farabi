@@ -87,6 +87,7 @@ PostgreSQL trigger rejecting updates and deletes.
 Recorded events:
 
 - `CLAIMED`: a worker acquired a fenced lease for an attempt.
+- `LEASE_EXPIRED`: a nonterminal worker lease expired and its attempt was reclaimed.
 - `RETRY_SCHEDULED`: object deletion failed and the job was returned to the queue.
 - `FAILED`: the configured attempt budget was exhausted after an object deletion failure.
 - `LEASE_EXHAUSTED`: a worker lease expired on the final allowed attempt.
