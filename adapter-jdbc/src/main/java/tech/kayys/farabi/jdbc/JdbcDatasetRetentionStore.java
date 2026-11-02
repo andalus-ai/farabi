@@ -24,7 +24,7 @@ public final class JdbcDatasetRetentionStore {
             c.setAutoCommit(false);
             try{
                 // Serialize policy changes with deletion claims, which lock the same dataset rows.
-                String lockSql="SELECT id FROM farabi_datasets WHERE workspace_id=? AND (? IS NULL OR source_id=?) FOR UPDATE";
+                String lockSql="SELECT id FROM farabi_datasets WHERE workspace_id=? AND (? IS NULL OR source_id=?) ORDER BY id FOR UPDATE";
                 try(PreparedStatement p=c.prepareStatement(lockSql)){
                     p.setString(1,workspace);p.setString(2,sourceId);p.setString(3,sourceId);
                     try(ResultSet r=p.executeQuery()){while(r.next()) { /* acquire row locks */ }}
