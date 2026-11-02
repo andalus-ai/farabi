@@ -24,6 +24,7 @@ public final class JdbcDatasetDeletionApprovalStore {
                     p.setObject(1,dataset);p.setString(2,workspace);
                     try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("dataset not found");if("ARCHIVED".equals(r.getString(1)))throw new IllegalStateException("dataset is already archived");}
                 }
+                expirePendingForDataset(c,dataset,workspace,now);
                 try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_deletion_approvals WHERE dataset_id=? AND workspace_id=? AND status IN ('PENDING','APPROVED') LIMIT 1")){
                     p.setObject(1,dataset);p.setString(2,workspace);try(ResultSet r=p.executeQuery()){if(r.next())throw new IllegalStateException("dataset already has a pending or approved deletion request");}
                 }
@@ -86,6 +87,11 @@ public final class JdbcDatasetDeletionApprovalStore {
                 Approval a=readLocked(c,id,workspace,true);
                 if(!a.status().equals("PENDING"))throw new IllegalStateException("approval is not pending");
                 if(a.requesterId().equals(approver))throw new SecurityException("requester cannot decide their own deletion");
+                if(!a.expiresAt().isAfter(now)){
+                    updateDecision(c,id,workspace,"EXPIRED","system:expiry","approval expired",now,null);
+                    audit(c,id,workspace,a.datasetId(),"EXPIRED","system:expiry","approval expired",now);c.commit();
+                    return new Approval(a.id(),workspace,a.datasetId(),a.requesterId(),a.requestReason(),a.requestedAt(),a.expiresAt(),"EXPIRED","system:expiry","approval expired",now,null);
+                }
                 updateDecision(c,id,workspace,"REJECTED",approver,reason,now,null);
                 audit(c,id,workspace,a.datasetId(),"REJECTED",approver,reason,now);c.commit();
                 return new Approval(a.id(),workspace,a.datasetId(),a.requesterId(),a.requestReason(),a.requestedAt(),a.expiresAt(),"REJECTED",approver,reason,now,null);
@@ -106,6 +112,17 @@ public final class JdbcDatasetDeletionApprovalStore {
         }catch(SQLException e){throw new IllegalStateException("list deletion approvals failed",e);}
     }
 
+
+    private static void expirePendingForDataset(Connection c,UUID dataset,String ws,Instant now)throws SQLException{
+        List<UUID> expired=new ArrayList<>();
+        try(PreparedStatement p=c.prepareStatement("SELECT id FROM farabi_dataset_deletion_approvals WHERE dataset_id=? AND workspace_id=? AND status='PENDING' AND expires_at<=? FOR UPDATE")){
+            p.setObject(1,dataset);p.setString(2,ws);p.setTimestamp(3,Timestamp.from(now));try(ResultSet r=p.executeQuery()){while(r.next())expired.add(r.getObject(1,UUID.class));}
+        }
+        for(UUID id:expired){
+            updateDecision(c,id,ws,"EXPIRED","system:expiry","approval expired",now,null);
+            audit(c,id,ws,dataset,"EXPIRED","system:expiry","approval expired",now);
+        }
+    }
     private static void enforceEligible(Connection c,UUID dataset,String ws,Instant now)throws SQLException{
         try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_legal_holds WHERE dataset_id=? AND workspace_id=? AND released_at IS NULL LIMIT 1")){
             p.setObject(1,dataset);p.setString(2,ws);try(ResultSet r=p.executeQuery()){if(r.next())throw new IllegalStateException("dataset is under an active legal hold");}
