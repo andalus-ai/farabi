@@ -9,6 +9,10 @@ CREATE TABLE farabi_dataset_retention_policies (
  supersedes_policy_id UUID REFERENCES farabi_dataset_retention_policies(id),
  UNIQUE(id, workspace_id)
 );
+ALTER TABLE farabi_dataset_retention_policies
+    ADD CONSTRAINT fk_farabi_retention_policy_supersedes_workspace
+    FOREIGN KEY (supersedes_policy_id, workspace_id)
+    REFERENCES farabi_dataset_retention_policies(id, workspace_id);
 CREATE INDEX idx_farabi_retention_policy_lookup ON farabi_dataset_retention_policies(workspace_id, source_id, effective_at DESC);
 
 CREATE TABLE farabi_dataset_retention_exemptions (
