@@ -45,8 +45,9 @@ public final class DatasetDeletionReconciliationService {
         for(DatasetState dataset:snapshot.datasets()){
             if("ARCHIVED".equals(dataset.lifecycle())){
                 if(dataset.storageBytes()>0)findings.add(new Finding(FindingType.ARCHIVED_STORAGE_BYTES_NONZERO,dataset.datasetId(),null,null,0,dataset.storageBytes()));
-                if(inventory.inspect(dataset.locationRef(),workspaceId).isPresent())
-                    findings.add(new Finding(FindingType.ARCHIVED_OBJECT_PRESENT,dataset.datasetId(),null,dataset.locationRef(),0,1));
+                var object=inventory.inspect(dataset.locationRef(),workspaceId);
+                if(object.isPresent())
+                    findings.add(new Finding(FindingType.ARCHIVED_OBJECT_PRESENT,dataset.datasetId(),null,dataset.locationRef(),0,object.get().sizeBytes()));
             }
         }
         for(DeletionState deletion:snapshot.deletions()){
