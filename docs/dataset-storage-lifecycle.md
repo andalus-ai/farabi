@@ -110,7 +110,7 @@ Read execution history with
 The endpoint is workspace-scoped and requires the storage operator authorization boundary.
 A job outside the caller's workspace returns an empty list, not another workspace's data.
 
-The deletion worker now requires an explicit provider absence check before archival. The local
+Migration V20 adds the `OBJECT_ABSENT_VERIFIED` audit event. The deletion worker now requires an explicit provider absence check before archival. The local
 adapter checks the workspace-scoped file path; the S3 adapter performs a post-delete HEAD lookup.
 If the object remains visible or the provider cannot confirm absence, the job is retried and the
 dataset remains unarchived with its quota usage retained. This closes the crash window where an
