@@ -77,6 +77,36 @@ even if retention has elapsed or an exemption exists.
 Retention policies establish minimum preservation periods; they do not automatically delete
 datasets. Eligible datasets proceed through the maker-checker approval flow described below.
 
+## Deletion execution audit (V19)
+
+The worker writes immutable execution events in the same database transaction as each
+state transition. Migration V19 adds `farabi_dataset_deletion_execution_audit` with
+workspace- and dataset-scoped foreign keys, a unique job/event/attempt key, and a
+PostgreSQL trigger rejecting updates and deletes.
+
+Recorded events:
+
+- `CLAIMED`: a worker acquired a fenced lease for an attempt.
+- `RETRY_SCHEDULED`: object deletion failed and the job was returned to the queue.
+- `FAILED`: the configured attempt budget was exhausted after an object deletion failure.
+- `LEASE_EXHAUSTED`: a worker lease expired on the final allowed attempt.
+- `SUCCEEDED`: object deletion completed and dataset lifecycle/storage accounting were
+  committed.
+
+The claim, retry/failure, lease-exhaustion, and success audit writes are transactionally
+coupled to their respective job transitions. A stale lease token cannot complete or fail a
+job and cannot write an event through those transitions. The audit records attempt, worker,
+lease token, error category, and timestamp; they intentionally do not persist exception
+messages or object-store credentials.
+
+Read execution history with
+`GET /api/dataset-deletion-approvals/jobs/{jobId}/audit?limit=50`.
+The endpoint is workspace-scoped and requires the storage operator authorization boundary.
+A job outside the caller's workspace returns an empty list, not another workspace's data.
+
+This audit trail makes job transitions reviewable; it does not yet implement operator retry
+approval or provider-level post-delete reconciliation. Those remain follow-up controls.
+
 ## Maker-checker deletion approvals
 
 Migration V18 introduces a separate approval record and immutable decision audit. A requester
