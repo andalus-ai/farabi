@@ -71,6 +71,13 @@ public class DatasetDeletionApprovalResource {
         return store().recent(ws,limit==null?50:limit);
     }
 
+    @GET @Path("/{approvalId}/audit")
+    public List<JdbcDatasetDeletionApprovalStore.AuditEvent> audit(@PathParam("approvalId") UUID id) {
+        String ws=workspace();requestAuthorizer.authorize(subject(),ws);
+        if(store().find(id,ws).isEmpty())throw new NotFoundException();
+        return store().audit(id,ws);
+    }
+
     @GET @Path("/{approvalId}")
     public Approval get(@PathParam("approvalId") UUID id) {
         String ws=workspace();requestAuthorizer.authorize(subject(),ws);
