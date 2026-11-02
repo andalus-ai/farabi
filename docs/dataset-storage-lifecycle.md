@@ -1,9 +1,9 @@
 # Dataset storage lifecycle
 
-Dataset deletion is an asynchronous, durable operation. The API/service layer must authorize the
-workspace and subject before calling `DatasetDeletionService.request`. The service records a
-`DELETE_PENDING` tombstone and a deletion outbox row in one database transaction. The dataset
-metadata and profiles remain available for audit until the object deletion succeeds.
+Dataset deletion is a maker-checker governed, asynchronous durable operation. The requester submits
+an approval request; a separately authorized checker approves it. Only that approval transaction
+creates the `DELETE_PENDING` tombstone and deletion outbox row. Dataset metadata and profiles
+remain available for audit until object deletion succeeds.
 
 ## Processing
 
@@ -24,9 +24,9 @@ validates the bucket and workspace-hashed key prefix before issuing DeleteObject
 clients to submit storage references: deletion requests must resolve a dataset ID inside the
 authenticated workspace.
 
-The default deletion authorizer denies all requests. A deployment must provide an explicit
-`DatasetStorageLifecyclePorts.Authorizer` implementation before exposing deletion operations.
-The worker can be enabled with the existing `FARABI_IMPORT_WORKER_ENABLED` scheduler switch.
+The default storage operator authorizer and the separate deletion approval authorizer both deny
+access until deployment supplies explicit RBAC implementations. The worker can be enabled with
+the existing `FARABI_IMPORT_WORKER_ENABLED` scheduler switch.
 
 ## Legal holds
 
@@ -75,8 +75,7 @@ does not authorize a later deletion. An active legal hold independently blocks d
 even if retention has elapsed or an exemption exists.
 
 Retention policies establish minimum preservation periods; they do not automatically delete
-datasets. This phase does not yet implement maker-checker deletion approval or a retention
-scheduler. Eligible datasets still require the existing separately authorized deletion flow.
+datasets. Eligible datasets proceed through the maker-checker approval flow described below.
 
 ## Maker-checker deletion approvals
 
@@ -114,7 +113,6 @@ approves historical deletion work.
 
 ## Operational follow-ups
 
-Retention policies, retention-based automatic deletion, maker-checker deletion approvals, and
-legal-hold policy administration remain separate follow-up work. A legal hold is not a retention
-policy and does not itself schedule deletion. Failed deletion rows should be monitored and
+Retention-based automatic deletion and legal-hold policy administration remain separate follow-up
+work. A legal hold is not a retention policy and does not itself schedule deletion. Failed deletion rows should be monitored and
 reconciled; object-store lifecycle rules must not independently expire live dataset objects.
