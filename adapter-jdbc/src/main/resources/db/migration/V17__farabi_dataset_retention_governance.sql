@@ -52,3 +52,12 @@ ALTER TABLE farabi_dataset_legal_holds
 ALTER TABLE farabi_dataset_legal_hold_audit
     ADD CONSTRAINT fk_farabi_legal_hold_audit_dataset_workspace
     FOREIGN KEY (dataset_id, workspace_id) REFERENCES farabi_datasets(id, workspace_id);
+
+CREATE FUNCTION farabi_reject_retention_policy_mutation() RETURNS trigger AS $$
+BEGIN
+    RAISE EXCEPTION 'dataset retention policies are versioned and immutable';
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER farabi_dataset_retention_policy_immutable
+    BEFORE UPDATE OR DELETE ON farabi_dataset_retention_policies
+    FOR EACH ROW EXECUTE FUNCTION farabi_reject_retention_policy_mutation();
