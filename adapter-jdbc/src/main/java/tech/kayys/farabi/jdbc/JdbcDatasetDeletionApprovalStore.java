@@ -26,7 +26,8 @@ public final class JdbcDatasetDeletionApprovalStore {
                     try(ResultSet r=p.executeQuery()){
                         if(!r.next())throw new NoSuchElementException("dataset not found");
                         String lifecycle=r.getString(1);
-                        if(!"PROFILED".equals(lifecycle)&&!"PROFILE_FAILED".equals(lifecycle))
+                        if(!"PROFILED".equals(lifecycle)&&!"PROFILE_FAILED".equals(lifecycle)
+                                &&!("DELETE_PENDING".equals(lifecycle)&&hasReprocessableLegacyJob(c,dataset,workspace)))
                             throw new IllegalStateException("dataset lifecycle does not permit a deletion request");
                     }
                 }
@@ -62,7 +63,8 @@ public final class JdbcDatasetDeletionApprovalStore {
                     try(ResultSet r=p.executeQuery()){
                         if(!r.next())throw new NoSuchElementException("dataset not found");
                         String lifecycle=r.getString("lifecycle");
-                        if(!"PROFILED".equals(lifecycle)&&!"PROFILE_FAILED".equals(lifecycle))
+                        if(!"PROFILED".equals(lifecycle)&&!"PROFILE_FAILED".equals(lifecycle)
+                                &&!("DELETE_PENDING".equals(lifecycle)&&hasReprocessableLegacyJob(c,a.datasetId(),workspace)))
                             throw new IllegalStateException("dataset lifecycle no longer permits deletion");
                     }
                 }
@@ -76,9 +78,28 @@ public final class JdbcDatasetDeletionApprovalStore {
                 try(PreparedStatement p=c.prepareStatement("SELECT location_ref FROM farabi_datasets WHERE id=? AND workspace_id=?")){
                     p.setObject(1,a.datasetId());p.setString(2,workspace);try(ResultSet r=p.executeQuery()){r.next();location=r.getString(1);}
                 }
-                UUID job=UUID.randomUUID();
-                try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_deletions(id,workspace_id,dataset_id,location_ref,status,attempts,max_attempts,available_at,created_at,updated_at,approval_id) VALUES(?,?,?,?,'QUEUED',0,?,?,?, ?,?)")){
-                    p.setObject(1,job);p.setString(2,workspace);p.setObject(3,a.datasetId());p.setString(4,location);p.setInt(5,maxAttempts);p.setTimestamp(6,Timestamp.from(now));p.setTimestamp(7,Timestamp.from(now));p.setTimestamp(8,Timestamp.from(now));p.setObject(9,id);p.executeUpdate();
+                UUID job;
+                String legacyStatus=null;
+                try(PreparedStatement p=c.prepareStatement("SELECT id,status,approval_id FROM farabi_dataset_deletions WHERE dataset_id=? AND workspace_id=? FOR UPDATE")){
+                    p.setObject(1,a.datasetId());p.setString(2,workspace);
+                    try(ResultSet r=p.executeQuery()){
+                        if(r.next()){
+                            job=r.getObject("id",UUID.class);legacyStatus=r.getString("status");
+                            if(r.getObject("approval_id")!=null||!("QUEUED".equals(legacyStatus)||"FAILED".equals(legacyStatus)))
+                                throw new IllegalStateException("an existing deletion job requires operator reconciliation");
+                        }else job=null;
+                    }
+                }
+                if(job==null){
+                    job=UUID.randomUUID();
+                    try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_deletions(id,workspace_id,dataset_id,location_ref,status,attempts,max_attempts,available_at,created_at,updated_at,approval_id) VALUES(?,?,?,?,'QUEUED',0,?,?,?, ?,?)")){
+                        p.setObject(1,job);p.setString(2,workspace);p.setObject(3,a.datasetId());p.setString(4,location);p.setInt(5,maxAttempts);p.setTimestamp(6,Timestamp.from(now));p.setTimestamp(7,Timestamp.from(now));p.setTimestamp(8,Timestamp.from(now));p.setObject(9,id);p.executeUpdate();
+                    }
+                }else{
+                    try(PreparedStatement p=c.prepareStatement("UPDATE farabi_dataset_deletions SET location_ref=?,status='QUEUED',attempts=0,max_attempts=?,lease_owner=NULL,lease_token=NULL,lease_until=NULL,available_at=?,updated_at=?,approval_id=? WHERE id=? AND workspace_id=?")){
+                        p.setString(1,location);p.setInt(2,maxAttempts);p.setTimestamp(3,Timestamp.from(now));p.setTimestamp(4,Timestamp.from(now));p.setObject(5,id);p.setObject(6,job);p.setString(7,workspace);
+                        if(p.executeUpdate()!=1)throw new IllegalStateException("legacy deletion job changed concurrently");
+                    }
                 }
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_datasets SET lifecycle='DELETE_PENDING',deletion_requested_at=?,updated_at=? WHERE id=? AND workspace_id=?")){
                     p.setTimestamp(1,Timestamp.from(now));p.setTimestamp(2,Timestamp.from(now));p.setObject(3,a.datasetId());p.setString(4,workspace);p.executeUpdate();
@@ -136,6 +157,16 @@ public final class JdbcDatasetDeletionApprovalStore {
         }catch(SQLException e){throw new IllegalStateException("read deletion approval audit failed",e);}
     }
 
+    private static boolean hasReprocessableLegacyJob(Connection c,UUID dataset,String ws)throws SQLException{
+        try(PreparedStatement p=c.prepareStatement("SELECT status,approval_id FROM farabi_dataset_deletions WHERE dataset_id=? AND workspace_id=? FOR UPDATE")){
+            p.setObject(1,dataset);p.setString(2,ws);
+            try(ResultSet r=p.executeQuery()){
+                if(!r.next())return false;
+                String status=r.getString("status");
+                return r.getObject("approval_id")==null&&("QUEUED".equals(status)||"FAILED".equals(status));
+            }
+        }
+    }
     private static void expirePendingForDataset(Connection c,UUID dataset,String ws,Instant now)throws SQLException{
         List<UUID> expired=new ArrayList<>();
         try(PreparedStatement p=c.prepareStatement("SELECT id FROM farabi_dataset_deletion_approvals WHERE dataset_id=? AND workspace_id=? AND status='PENDING' AND expires_at<=? FOR UPDATE")){
