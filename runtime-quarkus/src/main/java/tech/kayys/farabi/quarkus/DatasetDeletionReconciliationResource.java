@@ -31,7 +31,8 @@ public class DatasetDeletionReconciliationResource {
     @POST
     public Response inspect() {
         String workspace=workspace();authorize(workspace);
-        Report report=reconciliation.inspect(workspace);
+        String subject=subject();
+        Report report=reconciliation.inspect(workspace,subject);
         return Response.ok(map(report)).build();
     }
 
@@ -46,15 +47,16 @@ public class DatasetDeletionReconciliationResource {
         if(workspace==null||workspace.isBlank())throw new ForbiddenException("authenticated identity has no workspace scope");
         return workspace;
     }
-    private void authorize(String workspace){
+    private String subject(){
         String subject=identity.getPrincipal()==null?null:identity.getPrincipal().getName();
         if(subject==null||subject.isBlank())throw new ForbiddenException("authenticated subject is required");
-        authorizer.authorize(subject,workspace);
+        return subject;
     }
+    private void authorize(String workspace){ authorizer.authorize(subject(),workspace); }
     private ReportView map(Report r){
-        return new ReportView(r.id(),r.workspaceId(),r.inspectedAt(),r.datasetsInspected(),
+        return new ReportView(r.id(),r.workspaceId(),r.requestedBy(),r.inspectedAt(),r.datasetsInspected(),
                 r.deletionJobsInspected(),r.consistent(),r.findings());
     }
-    public record ReportView(UUID id,String workspaceId,Instant inspectedAt,int datasetsInspected,
+    public record ReportView(UUID id,String workspaceId,String requestedBy,Instant inspectedAt,int datasetsInspected,
             int deletionJobsInspected,boolean consistent,List<Finding> findings) {}
 }
