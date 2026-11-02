@@ -105,8 +105,8 @@ Read execution history with
 The endpoint is workspace-scoped and requires the storage operator authorization boundary.
 A job outside the caller's workspace returns an empty list, not another workspace's data.
 
-This audit trail makes job transitions reviewable; it does not yet implement operator retry
-approval or provider-level post-delete reconciliation. Those remain follow-up controls.
+This audit trail makes job transitions reviewable. Operator-controlled recovery is documented
+below; provider-level post-delete reconciliation remains a follow-up control.
 
 ## Maker-checker deletion approvals
 
@@ -159,5 +159,5 @@ Recovery is an explicit operator action, not a relaxation of maker-checker appro
 ## Operational follow-ups
 
 Retention-based automatic deletion and legal-hold policy administration remain separate follow-up
-work. A legal hold is not a retention policy and does not itself schedule deletion. Failed deletion rows should be monitored and
-reconciled; object-store lifecycle rules must not independently expire live dataset objects.
+work. A legal hold is not a retention policy and does not itself schedule deletion. Failed deletion rows should be monitored and recovered only through the governed recovery endpoint;
+object-store lifecycle rules must not independently expire live dataset objects.
