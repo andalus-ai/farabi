@@ -71,5 +71,7 @@ class JdbcDatasetDeletionApprovalStoreTest {
         assertThrows(JdbcDatasetDeletionApprovalStore.ApprovalExpiredException.class,
             ()->store.approve(pending.id(),"ws","checker","late approval",now.plusSeconds(31),4));
         assertEquals("EXPIRED",store.find(pending.id(),"ws").orElseThrow().status());
+        var replacement=store.request(dataset,"ws","maker-2","new request",now.plusSeconds(32),Duration.ofHours(1));
+        assertEquals("PENDING",replacement.status());
     }
 }
