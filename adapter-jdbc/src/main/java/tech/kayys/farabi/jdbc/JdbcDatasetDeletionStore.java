@@ -177,8 +177,12 @@ public final class JdbcDatasetDeletionStore implements Store {
                     p.setInt(1,retryBudget);p.setTimestamp(2,Timestamp.from(now));p.setTimestamp(3,Timestamp.from(now));p.setObject(4,jobId);p.setString(5,workspace);
                     if(p.executeUpdate()!=1)throw new IllegalStateException("deletion job changed concurrently");
                 }
-                try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_deletion_execution_audit(id,job_id,workspace_id,dataset_id,event_type,attempt,actor_id,reason,occurred_at) VALUES(?,?,?,?,'RECOVERY_QUEUED',0,?,?,?)")){
-                    p.setObject(1,UUID.randomUUID());p.setObject(2,jobId);p.setString(3,workspace);p.setObject(4,dataset);p.setString(5,actor);p.setString(6,reason.trim());p.setTimestamp(7,Timestamp.from(now));p.executeUpdate();
+                int recoverySequence;
+                try(PreparedStatement p=c.prepareStatement("SELECT COALESCE(MAX(attempt),0)+1 FROM farabi_dataset_deletion_execution_audit WHERE job_id=? AND event_type='RECOVERY_QUEUED'")){
+                    p.setObject(1,jobId);try(ResultSet r=p.executeQuery()){r.next();recoverySequence=r.getInt(1);}
+                }
+                try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_deletion_execution_audit(id,job_id,workspace_id,dataset_id,event_type,attempt,actor_id,reason,occurred_at) VALUES(?,?,?,?,'RECOVERY_QUEUED',?,?,?,?)")){
+                    p.setObject(1,UUID.randomUUID());p.setObject(2,jobId);p.setString(3,workspace);p.setObject(4,dataset);p.setInt(5,recoverySequence);p.setString(6,actor);p.setString(7,reason.trim());p.setTimestamp(8,Timestamp.from(now));p.executeUpdate();
                 }
                 c.commit();
                 return findById(jobId,workspace).orElseThrow();
