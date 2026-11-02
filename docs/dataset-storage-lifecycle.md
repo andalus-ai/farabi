@@ -49,6 +49,33 @@ hold if deletion is already running. This serializes the critical race: either t
 first and deletion cannot be claimed, or deletion has already started and the hold is rejected.
 After a deletion job is queued but not running, a hold may be placed and pauses future claims.
 
+## Retention policy governance
+
+Migration V17 adds append-only-by-version retention policies, dataset exemptions and an
+append-only audit log. Policies are scoped to a workspace and optionally to a dataset source.
+A source-specific policy takes precedence over the workspace default. Policy versions are
+created as new rows; existing versions are retained and linked through
+`supersedes_policy_id`. Retention is measured from dataset `created_at`.
+
+Operator API (all routes derive workspace and actor from the authenticated identity and use
+the fail-closed storage operator authorizer):
+
+- `POST /api/storage/retention/policies` with `{"sourceId":"optional-source","retentionDays":365,"effectiveAt":"optional-ISO-8601","reason":"..."}`
+- `GET /api/storage/retention/policies?limit=50`
+- `POST /api/storage/retention/datasets/{datasetId}/exemptions` with `{"reason":"...","expiresAt":"optional-ISO-8601"}`
+- `POST /api/storage/retention/exemptions/{exemptionId}/revoke` with `{"reason":"..."}`
+- `GET /api/storage/retention/preview?limit=100`
+
+The preview is read-only. It lists datasets whose applicable retention clock has elapsed and
+marks active legal holds separately. Active exemptions suppress a dataset from the preview.
+No policy means no deletion: deletion requests fail closed unless an effective policy exists
+or an explicit active exemption applies. An active legal hold independently blocks deletion,
+even if retention has elapsed or an exemption exists.
+
+Retention policies establish minimum preservation periods; they do not automatically delete
+datasets. This phase does not yet implement maker-checker deletion approval or a retention
+scheduler. Eligible datasets still require the existing separately authorized deletion flow.
+
 ## Operational follow-ups
 
 Retention policies, retention-based automatic deletion, maker-checker deletion approvals, and
