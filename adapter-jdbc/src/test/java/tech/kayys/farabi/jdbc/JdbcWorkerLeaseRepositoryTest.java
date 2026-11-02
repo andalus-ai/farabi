@@ -7,6 +7,8 @@ import java.sql.DriverManager;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
@@ -169,6 +171,74 @@ class JdbcWorkerLeaseRepositoryTest {
                 assertEquals(1L, result.getLong("lease_fence"));
                 assertNotNull(result.getString("lease_owner"));
             }
+        }
+    }
+
+    @Test
+    void repeatedConcurrentTakeoversHaveOneWinnerAndMonotonicFences() throws Exception {
+        UUID executionId = insertExecution("workspace-a", Status.RUNNING);
+        int contenders = 8;
+        int takeoverRounds = 5;
+        ExecutorService workers = Executors.newFixedThreadPool(contenders);
+        Lease previousWinner = null;
+
+        try {
+            for (int round = 0; round < takeoverRounds; round++) {
+                Instant claimTime = NOW.plus(TTL.multipliedBy(round));
+                CountDownLatch ready = new CountDownLatch(contenders);
+                CountDownLatch start = new CountDownLatch(1);
+                List<java.util.concurrent.Future<java.util.Optional<Lease>>> attempts =
+                        new ArrayList<>();
+
+                for (int worker = 0; worker < contenders; worker++) {
+                    String workerId = "round-" + round + "-worker-" + worker;
+                    attempts.add(workers.submit(() -> {
+                        ready.countDown();
+                        if (!start.await(10, TimeUnit.SECONDS)) {
+                            throw new AssertionError("claim wave did not start");
+                        }
+                        return repository.claim(executionId, "workspace-a",
+                                workerId, claimTime, TTL);
+                    }));
+                }
+
+                assertTrue(ready.await(10, TimeUnit.SECONDS),
+                        "all contenders should be ready for round " + round);
+                start.countDown();
+
+                List<Lease> winners = new ArrayList<>();
+                for (var attempt : attempts) {
+                    attempt.get(10, TimeUnit.SECONDS).ifPresent(winners::add);
+                }
+
+                assertEquals(1, winners.size(),
+                        "exactly one worker must win takeover round " + round);
+                Lease winner = winners.getFirst();
+                assertEquals(round + 1L, winner.fence(),
+                        "fencing token must increase exactly once per successful takeover");
+
+                if (previousWinner != null) {
+                    assertFalse(repository.renew(previousWinner, claimTime, TTL),
+                            "previous owner must not renew after takeover round " + round);
+                    assertFalse(repository.complete(previousWinner, Status.RUNNING,
+                            Status.SUCCEEDED, claimTime),
+                            "previous owner must not complete after takeover round " + round);
+                }
+                previousWinner = winner;
+
+                try (Connection connection = dataSource.getConnection();
+                     var statement = connection.prepareStatement(
+                             "SELECT lease_owner, lease_fence FROM farabi_query_executions WHERE id=?")) {
+                    statement.setObject(1, executionId);
+                    try (var result = statement.executeQuery()) {
+                        assertTrue(result.next());
+                        assertEquals(winner.workerId(), result.getString("lease_owner"));
+                        assertEquals(round + 1L, result.getLong("lease_fence"));
+                    }
+                }
+            }
+        } finally {
+            workers.shutdownNow();
         }
     }
 
