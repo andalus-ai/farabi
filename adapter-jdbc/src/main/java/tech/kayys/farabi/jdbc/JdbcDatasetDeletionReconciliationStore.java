@@ -17,11 +17,11 @@ public final class JdbcDatasetDeletionReconciliationStore implements Repository 
         try(Connection c=source.getConnection()){
             List<DatasetState> datasets=new ArrayList<>();
             try(PreparedStatement p=c.prepareStatement("SELECT id,location_ref,lifecycle,storage_bytes FROM farabi_datasets WHERE workspace_id=? ORDER BY id")){
-                p.setString(1,workspace);try(ResultSet r=p.executeQuery()){while(r.next())datasets.add(new DatasetState(r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getLong(4)));}
+                p.setString(1,workspace);try(ResultSet r=p.executeQuery()){while(r.next()){if(datasets.size()==5000)throw new IllegalStateException("workspace exceeds 5000 datasets; use a partitioned reconciliation run");datasets.add(new DatasetState(r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getLong(4)));}}
             }
             List<DeletionState> deletions=new ArrayList<>();
             try(PreparedStatement p=c.prepareStatement("SELECT id,dataset_id,status FROM farabi_dataset_deletions WHERE workspace_id=? ORDER BY id")){
-                p.setString(1,workspace);try(ResultSet r=p.executeQuery()){while(r.next())deletions.add(new DeletionState(r.getObject(1,UUID.class),r.getObject(2,UUID.class),r.getString(3)));}
+                p.setString(1,workspace);try(ResultSet r=p.executeQuery()){while(r.next()){if(deletions.size()==5000)throw new IllegalStateException("workspace exceeds 5000 deletion jobs; use a partitioned reconciliation run");deletions.add(new DeletionState(r.getObject(1,UUID.class),r.getObject(2,UUID.class),r.getString(3)));}}
             }
             long ledgerUsed=0,ledgerReserved=0;
             try(PreparedStatement p=c.prepareStatement("SELECT used_bytes,reserved_bytes FROM farabi_workspace_storage WHERE workspace_id=?")){
