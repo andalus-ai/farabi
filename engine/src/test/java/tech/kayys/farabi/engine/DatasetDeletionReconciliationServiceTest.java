@@ -29,11 +29,11 @@ class DatasetDeletionReconciliationServiceTest {
         };
         var service=new DatasetDeletionReconciliationService(repository,inventory,Clock.fixed(now,ZoneOffset.UTC));
 
-        Report report=service.inspect("workspace-a");
+        Report report=service.inspect("workspace-a","operator-a");
 
         assertFalse(report.consistent());
         assertEquals(5,report.findings().size());
-        assertTrue(report.findings().stream().anyMatch(f->f.type()==FindingType.ARCHIVED_OBJECT_PRESENT));
+        assertTrue(report.findings().stream().anyMatch(f->f.type()==FindingType.ARCHIVED_OBJECT_PRESENT&&f.actualBytes()==128));
         assertTrue(report.findings().stream().anyMatch(f->f.type()==FindingType.SUCCEEDED_DATASET_NOT_ARCHIVED));
         assertTrue(report.findings().stream().anyMatch(f->f.type()==FindingType.ARCHIVED_STORAGE_BYTES_NONZERO));
         assertTrue(report.findings().stream().anyMatch(f->f.type()==FindingType.LEDGER_USED_MISMATCH));
