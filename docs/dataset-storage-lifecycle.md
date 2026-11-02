@@ -78,6 +78,39 @@ Retention policies establish minimum preservation periods; they do not automatic
 datasets. This phase does not yet implement maker-checker deletion approval or a retention
 scheduler. Eligible datasets still require the existing separately authorized deletion flow.
 
+## Maker-checker deletion approvals
+
+Migration V18 introduces a separate approval record and immutable decision audit. A requester
+cannot approve or reject their own request. Approval decisions are one-way; request identity,
+dataset, reason and expiry are immutable. Approval lifetime defaults to 24 hours and is
+configurable with `FARABI_DATASET_DELETION_APPROVAL_LIFETIME` (for example, `PT24H`).
+
+API (workspace and actor are derived from the authenticated identity):
+
+- `POST /api/dataset-deletion-approvals` with `{"datasetId":"...","reason":"..."}` submits a request.
+- `POST /api/dataset-deletion-approvals/{approvalId}/approve` with `{"reason":"..."}` approves.
+- `POST /api/dataset-deletion-approvals/{approvalId}/reject` with `{"reason":"..."}` rejects.
+- `GET /api/dataset-deletion-approvals?limit=50` lists workspace requests.
+- `GET /api/dataset-deletion-approvals/{approvalId}` reads a workspace-scoped request.
+
+Request submission uses the storage operator authorizer. Approval and rejection use a separate
+`DatasetDeletionApprovalAuthorizer`; its default CDI implementation denies all decisions.
+Deployments must supply an RBAC implementation that grants approval permission independently
+from request permission. The store also enforces requester/approver identity separation.
+
+Approval revalidates the active legal hold, effective retention policy and exemption state in
+the same transaction that creates the deletion job. The dataset is locked throughout. The
+worker only claims a job whose exact approval record is APPROVED and references that job.
+It rechecks holds, retention and exemption expiry at claim time. Policy changes and exemption
+revocation serialize with deletion claims and are rejected while physical deletion is running.
+Expired pending requests are marked EXPIRED when a new request is submitted for the same
+dataset or when a decision is attempted.
+
+Direct calls through the legacy deletion request port now fail closed. Existing deletion jobs
+created before V18 have no approval record and are deliberately not claimed by the worker;
+operators must review and resubmit them through the approval API. No automatic migration
+approves historical deletion work.
+
 ## Operational follow-ups
 
 Retention policies, retention-based automatic deletion, maker-checker deletion approvals, and
