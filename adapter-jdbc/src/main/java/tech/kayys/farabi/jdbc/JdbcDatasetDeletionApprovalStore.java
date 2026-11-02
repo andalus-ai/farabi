@@ -23,7 +23,12 @@ public final class JdbcDatasetDeletionApprovalStore {
             try{
                 try(PreparedStatement p=c.prepareStatement("SELECT lifecycle FROM farabi_datasets WHERE id=? AND workspace_id=? FOR UPDATE")){
                     p.setObject(1,dataset);p.setString(2,workspace);
-                    try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("dataset not found");if("ARCHIVED".equals(r.getString(1)))throw new IllegalStateException("dataset is already archived");}
+                    try(ResultSet r=p.executeQuery()){
+                        if(!r.next())throw new NoSuchElementException("dataset not found");
+                        String lifecycle=r.getString(1);
+                        if(!"PROFILED".equals(lifecycle)&&!"PROFILE_FAILED".equals(lifecycle))
+                            throw new IllegalStateException("dataset lifecycle does not permit a deletion request");
+                    }
                 }
                 expirePendingForDataset(c,dataset,workspace,now);
                 try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_deletion_approvals WHERE dataset_id=? AND workspace_id=? AND status IN ('PENDING','APPROVED') LIMIT 1")){
@@ -54,7 +59,12 @@ public final class JdbcDatasetDeletionApprovalStore {
                 if(a.requesterId().equals(approver))throw new SecurityException("requester cannot approve their own deletion");
                 try(PreparedStatement p=c.prepareStatement("SELECT location_ref,source_id,created_at,lifecycle FROM farabi_datasets WHERE id=? AND workspace_id=? FOR UPDATE")){
                     p.setObject(1,a.datasetId());p.setString(2,workspace);
-                    try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("dataset not found");}
+                    try(ResultSet r=p.executeQuery()){
+                        if(!r.next())throw new NoSuchElementException("dataset not found");
+                        String lifecycle=r.getString("lifecycle");
+                        if(!"PROFILED".equals(lifecycle)&&!"PROFILE_FAILED".equals(lifecycle))
+                            throw new IllegalStateException("dataset lifecycle no longer permits deletion");
+                    }
                 }
                 if(!a.expiresAt().isAfter(now)){
                     updateDecision(c,id,workspace,"EXPIRED",approver,"approval expired",now,null);
