@@ -19,6 +19,7 @@ public final class LocalDatasetObjectStore implements ObjectStore {
             throw new SecurityException("dataset object does not belong to workspace");
         UUID id=UUID.fromString(parts[2]);
         Path dir=root.resolve(hash(workspace)).normalize();
+        if(Files.isSymbolicLink(root)||Files.isSymbolicLink(dir))throw new SecurityException("symbolic links are not permitted in dataset storage");
         Path target=dir.resolve(id+".csv");
         for(String suffix:new String[]{".csv",".tsv",".json",".jsonl"}){
             Path candidate=dir.resolve(id+suffix).normalize();
@@ -33,6 +34,7 @@ public final class LocalDatasetObjectStore implements ObjectStore {
             throw new SecurityException("dataset object does not belong to workspace");
         UUID id=UUID.fromString(parts[2]);
         Path dir=root.resolve(hash(workspace)).normalize();
+        if(Files.isSymbolicLink(root)||Files.isSymbolicLink(dir))throw new SecurityException("symbolic links are not permitted in dataset storage");
         for(String suffix:new String[]{".csv",".tsv",".json",".jsonl"}){
             Path candidate=dir.resolve(id+suffix).normalize();
             if(!candidate.startsWith(dir))throw new SecurityException("invalid object path");
