@@ -107,9 +107,11 @@ Expired pending requests are marked EXPIRED when a new request is submitted for 
 dataset or when a decision is attempted.
 
 Direct calls through the legacy deletion request port now fail closed. Existing deletion jobs
-created before V18 have no approval record and are deliberately not claimed by the worker;
-operators must review and resubmit them through the approval API. No automatic migration
-approves historical deletion work.
+created before V18 have no approval record and are deliberately not claimed by the worker.
+Queued or failed legacy jobs can be reviewed and re-bound to a new maker-checker approval;
+the existing job is reused rather than duplicating the dataset's unique deletion row. A legacy
+job already RUNNING requires manual reconciliation because object deletion may have started.
+No automatic migration approves historical deletion work.
 
 ## Operational follow-ups
 
