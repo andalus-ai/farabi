@@ -149,7 +149,7 @@ class JdbcBackedQueryPollingLeaseTakeoverTest {
                     "stale RUNNING response must fail to renew the replaced lease");
             assertEquals(Status.SUCCEEDED, readStatus(id));
             assertEquals(2L, readFence(id));
-            assertEquals("worker-b", readLeaseOwner(id));
+            assertNull(readLeaseOwner(id), "terminal completion releases the replacement lease");
         } finally {
             releaseFirstCall.countDown();
             pool.shutdownNow();
