@@ -12,54 +12,7 @@ public final class JdbcDatasetDeletionStore implements Store {
     public JdbcDatasetDeletionStore(DataSource source){this.source=Objects.requireNonNull(source);}
 
     @Override public Optional<Deletion> request(UUID datasetId,String workspace,Instant now,int maxAttempts){
-        if(maxAttempts<1)throw new IllegalArgumentException("maxAttempts must be positive");
-        try(Connection c=source.getConnection()){
-            c.setAutoCommit(false);
-            try{
-                String select="SELECT location_ref,deletion_requested_at,source_id,created_at FROM farabi_datasets WHERE id=? AND workspace_id=? FOR UPDATE";
-                String location,sourceId; Timestamp requested,createdAt;
-                try(PreparedStatement p=c.prepareStatement(select)){
-                    p.setObject(1,datasetId);p.setString(2,workspace);
-                    try(ResultSet r=p.executeQuery()){if(!r.next()){c.rollback();return Optional.empty();}
-                        location=r.getString(1);requested=r.getTimestamp(2);sourceId=r.getString(3);createdAt=r.getTimestamp(4);}
-                }
-                // Retention is a minimum-preservation rule. Without an applicable policy,
-                // deletion fails closed; an active, explicit exemption bypasses the clock.
-                boolean exempt=false;
-                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_retention_exemptions WHERE dataset_id=? AND workspace_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?) LIMIT 1")){
-                    p.setObject(1,datasetId);p.setString(2,workspace);p.setTimestamp(3,Timestamp.from(now));
-                    try(ResultSet r=p.executeQuery()){exempt=r.next();}
-                }
-                if(!exempt){
-                    Integer retentionDays=null;
-                    try(PreparedStatement p=c.prepareStatement("SELECT retention_days FROM farabi_dataset_retention_policies WHERE workspace_id=? AND (source_id=? OR source_id IS NULL) AND effective_at<=? ORDER BY CASE WHEN source_id=? THEN 0 ELSE 1 END,effective_at DESC,created_at DESC LIMIT 1")){
-                        p.setString(1,workspace);p.setString(2,sourceId);p.setTimestamp(3,Timestamp.from(now));p.setString(4,sourceId);
-                        try(ResultSet r=p.executeQuery()){if(r.next())retentionDays=r.getInt(1);}
-                    }
-                    if(retentionDays==null)throw new IllegalStateException("no effective retention policy; deletion is denied");
-                    if(createdAt.toInstant().plusSeconds(Math.multiplyExact(retentionDays.longValue(),86400L)).isAfter(now))
-                        throw new IllegalStateException("dataset has not reached its retention expiry");
-                }
-                // Legal holds are checked while the dataset row is locked, so a hold
-                // placement operation must take the same dataset lock before it commits.
-                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_legal_holds WHERE dataset_id=? AND workspace_id=? AND released_at IS NULL LIMIT 1")){
-                    p.setObject(1,datasetId);p.setString(2,workspace);
-                    try(ResultSet r=p.executeQuery()){if(r.next())throw new IllegalStateException("dataset is under an active legal hold");}
-                }
-                if(requested==null){
-                    try(PreparedStatement p=c.prepareStatement("UPDATE farabi_datasets SET lifecycle='DELETE_PENDING',deletion_requested_at=?,updated_at=? WHERE id=? AND workspace_id=?")){
-                        p.setTimestamp(1,Timestamp.from(now));p.setTimestamp(2,Timestamp.from(now));p.setObject(3,datasetId);p.setString(4,workspace);p.executeUpdate();
-                    }
-                    try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_deletions(id,workspace_id,dataset_id,location_ref,status,attempts,max_attempts,available_at,created_at,updated_at) VALUES(?,?,?,?,'QUEUED',0,?,?,?,?)")){
-                        p.setObject(1,UUID.randomUUID());p.setString(2,workspace);p.setObject(3,datasetId);p.setString(4,location);
-                        p.setInt(5,maxAttempts);p.setTimestamp(6,Timestamp.from(now));p.setTimestamp(7,Timestamp.from(now));p.setTimestamp(8,Timestamp.from(now));p.executeUpdate();
-                    }
-                }
-                c.commit();
-                return findByDataset(datasetId,workspace);
-            }catch(Exception e){c.rollback();if(e instanceof RuntimeException re)throw re;throw new IllegalStateException("request dataset deletion failed",e);}
-            finally{c.setAutoCommit(true);}
-        }catch(SQLException e){throw new IllegalStateException("request dataset deletion failed",e);}
+        throw new IllegalStateException("direct dataset deletion is disabled; submit a maker-checker approval request");
     }
 
     private Optional<Deletion> findByDataset(UUID id,String workspace){
@@ -75,7 +28,7 @@ public final class JdbcDatasetDeletionStore implements Store {
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_dataset_deletions SET status='FAILED',lease_owner=NULL,lease_token=NULL,lease_until=NULL,updated_at=? WHERE status='RUNNING' AND attempts>=max_attempts AND lease_until<=?")){
                     p.setTimestamp(1,Timestamp.from(lease.now()));p.setTimestamp(2,Timestamp.from(lease.now()));p.executeUpdate();
                 }
-                String sql="SELECT d.* FROM farabi_dataset_deletions d JOIN farabi_datasets ds ON ds.id=d.dataset_id AND ds.workspace_id=d.workspace_id LEFT JOIN LATERAL (SELECT rp.retention_days FROM farabi_dataset_retention_policies rp WHERE rp.workspace_id=d.workspace_id AND (rp.source_id=ds.source_id OR rp.source_id IS NULL) AND rp.effective_at<=? ORDER BY CASE WHEN rp.source_id=ds.source_id THEN 0 ELSE 1 END,rp.effective_at DESC,rp.created_at DESC LIMIT 1) policy ON TRUE WHERE d.attempts<d.max_attempts AND d.available_at<=? AND (d.status='QUEUED' OR (d.status='RUNNING' AND d.lease_until<=?)) AND NOT EXISTS (SELECT 1 FROM farabi_dataset_legal_holds h WHERE h.dataset_id=d.dataset_id AND h.workspace_id=d.workspace_id AND h.released_at IS NULL) AND (EXISTS (SELECT 1 FROM farabi_dataset_retention_exemptions e WHERE e.dataset_id=d.dataset_id AND e.workspace_id=d.workspace_id AND e.revoked_at IS NULL AND (e.expires_at IS NULL OR e.expires_at>?)) OR ds.created_at + (policy.retention_days * INTERVAL '1 day') <= ?) ORDER BY d.created_at,d.id LIMIT 1 FOR UPDATE OF d,ds SKIP LOCKED";
+                String sql="SELECT d.* FROM farabi_dataset_deletions d JOIN farabi_dataset_deletion_approvals approval ON approval.id=d.approval_id AND approval.workspace_id=d.workspace_id AND approval.status='APPROVED' JOIN farabi_datasets ds ON ds.id=d.dataset_id AND ds.workspace_id=d.workspace_id LEFT JOIN LATERAL (SELECT rp.retention_days FROM farabi_dataset_retention_policies rp WHERE rp.workspace_id=d.workspace_id AND (rp.source_id=ds.source_id OR rp.source_id IS NULL) AND rp.effective_at<=? ORDER BY CASE WHEN rp.source_id=ds.source_id THEN 0 ELSE 1 END,rp.effective_at DESC,rp.created_at DESC LIMIT 1) policy ON TRUE WHERE d.attempts<d.max_attempts AND d.available_at<=? AND (d.status='QUEUED' OR (d.status='RUNNING' AND d.lease_until<=?)) AND NOT EXISTS (SELECT 1 FROM farabi_dataset_legal_holds h WHERE h.dataset_id=d.dataset_id AND h.workspace_id=d.workspace_id AND h.released_at IS NULL) AND (EXISTS (SELECT 1 FROM farabi_dataset_retention_exemptions e WHERE e.dataset_id=d.dataset_id AND e.workspace_id=d.workspace_id AND e.revoked_at IS NULL AND (e.expires_at IS NULL OR e.expires_at>?)) OR ds.created_at + (policy.retention_days * INTERVAL '1 day') <= ?) ORDER BY d.created_at,d.id LIMIT 1 FOR UPDATE OF d,ds SKIP LOCKED";
                 Deletion d;
                 try(PreparedStatement p=c.prepareStatement(sql)){p.setTimestamp(1,Timestamp.from(lease.now()));p.setTimestamp(2,Timestamp.from(lease.now()));p.setTimestamp(3,Timestamp.from(lease.now()));p.setTimestamp(4,Timestamp.from(lease.now()));p.setTimestamp(5,Timestamp.from(lease.now()));try(ResultSet r=p.executeQuery()){if(!r.next()){c.commit();return Optional.empty();}d=read(r);}}
                 UUID token=UUID.randomUUID();
