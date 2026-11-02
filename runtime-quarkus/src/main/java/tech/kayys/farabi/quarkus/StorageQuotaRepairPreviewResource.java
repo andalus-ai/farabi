@@ -14,7 +14,7 @@ import tech.kayys.farabi.engine.DatasetStorageQuotaRepairApplicationService;
 import tech.kayys.farabi.engine.DatasetStorageQuotaRepairApplicationService.Application;
 import tech.kayys.farabi.engine.DatasetStorageQuotaRepairPreviewService.Plan;
 
-/** Operator-only, workspace-scoped quota repair proposals. No mutation endpoint is exposed. */
+/** Operator-only, workspace-scoped quota repair previews and explicit approval. */
 @Path("/api/storage/usage/repair-previews")
 @Authenticated
 @Produces(MediaType.APPLICATION_JSON)
