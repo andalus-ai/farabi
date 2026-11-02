@@ -41,7 +41,6 @@ public final class DatasetStorageLifecyclePorts {
         void authorizeDeletion(String workspaceId, String subjectId, UUID datasetId);
     }
 
-    @FunctionalInterface
     public interface ObjectStore {
         /** Must validate that the opaque location reference belongs to workspaceId. */
         void delete(String locationRef, String workspaceId);
