@@ -67,9 +67,9 @@ public final class JdbcDatasetDeletionApprovalStore {
                     }
                 }
                 if(!a.expiresAt().isAfter(now)){
-                    updateDecision(c,id,workspace,"EXPIRED",approver,"approval expired",now,null);
-                    audit(c,id,workspace,a.datasetId(),"EXPIRED",approver,"approval expired",now);c.commit();
-                    throw new ApprovalExpiredException("deletion approval expired");
+                    updateDecision(c,id,workspace,"EXPIRED","system:expiry","approval expired",now,null);
+                    audit(c,id,workspace,a.datasetId(),"EXPIRED","system:expiry","approval expired",now);c.commit();
+                    return new Approval(a.id(),workspace,a.datasetId(),a.requesterId(),a.requestReason(),a.requestedAt(),a.expiresAt(),"EXPIRED","system:expiry","approval expired",now,null);
                 }
                 enforceEligible(c,a.datasetId(),workspace,now);
                 String location;
@@ -190,5 +190,4 @@ public final class JdbcDatasetDeletionApprovalStore {
         }
     }
     private static void required(String s,String n){if(s==null||s.isBlank())throw new IllegalArgumentException(n+" required");}
-    public static final class ApprovalExpiredException extends IllegalStateException{public ApprovalExpiredException(String m){super(m);}}
 }
