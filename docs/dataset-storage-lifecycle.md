@@ -92,6 +92,7 @@ API (workspace and actor are derived from the authenticated identity):
 - `POST /api/dataset-deletion-approvals/{approvalId}/reject` with `{"reason":"..."}` rejects.
 - `GET /api/dataset-deletion-approvals?limit=50` lists workspace requests.
 - `GET /api/dataset-deletion-approvals/{approvalId}` reads a workspace-scoped request.
+- `GET /api/dataset-deletion-approvals/{approvalId}/audit` reads its immutable decision history.
 
 Request submission uses the storage operator authorizer. Approval and rejection use a separate
 `DatasetDeletionApprovalAuthorizer`; its default CDI implementation denies all decisions.
