@@ -23,6 +23,10 @@ CREATE TABLE farabi_dataset_deletion_approvals (
 );
 CREATE INDEX idx_farabi_deletion_approval_pending
     ON farabi_dataset_deletion_approvals(workspace_id,status,expires_at,requested_at);
+CREATE INDEX idx_farabi_deletion_approval_dataset
+    ON farabi_dataset_deletion_approvals(workspace_id,dataset_id,status,expires_at);
+CREATE INDEX idx_farabi_dataset_deletions_approval
+    ON farabi_dataset_deletions(approval_id,status,available_at);
 CREATE UNIQUE INDEX uq_farabi_deletion_approval_job
     ON farabi_dataset_deletion_approvals(deletion_job_id) WHERE deletion_job_id IS NOT NULL;
 
