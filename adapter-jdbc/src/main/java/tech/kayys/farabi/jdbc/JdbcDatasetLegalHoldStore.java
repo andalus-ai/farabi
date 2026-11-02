@@ -45,16 +45,20 @@ public final class JdbcDatasetLegalHoldStore {
             c.setAutoCommit(false);
             try {
                 Hold h;
-                try(PreparedStatement p=c.prepareStatement("SELECT * FROM farabi_dataset_legal_holds WHERE id=? AND workspace_id=? FOR UPDATE")) {
+                try(PreparedStatement p=c.prepareStatement("SELECT * FROM farabi_dataset_legal_holds WHERE id=? AND workspace_id=?")) {
                     p.setObject(1,holdId);p.setString(2,workspace);
                     try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("legal hold not found");h=read(r);}
                 }
-                if(!h.active()) { c.commit(); return h; }
                 // Match the lock order used by deletion requests: dataset row, then hold row.
                 try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_datasets WHERE id=? AND workspace_id=? FOR UPDATE")) {
                     p.setObject(1,h.datasetId());p.setString(2,workspace);
                     try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("dataset not found");}
                 }
+                try(PreparedStatement p=c.prepareStatement("SELECT * FROM farabi_dataset_legal_holds WHERE id=? AND workspace_id=? FOR UPDATE")) {
+                    p.setObject(1,holdId);p.setString(2,workspace);
+                    try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("legal hold not found");h=read(r);}
+                }
+                if(!h.active()) { c.commit(); return h; }
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_dataset_legal_holds SET released_by=?,released_at=?,release_reason=? WHERE id=? AND workspace_id=? AND released_at IS NULL")) {
                     p.setString(1,actor);p.setTimestamp(2,Timestamp.from(now));p.setString(3,reason);p.setObject(4,holdId);p.setString(5,workspace);
                     if(p.executeUpdate()!=1)throw new IllegalStateException("legal hold changed concurrently");
