@@ -32,6 +32,7 @@ import tech.kayys.farabi.engine.DatasetStorageInventoryService;
 import tech.kayys.farabi.engine.DatasetStorageInventoryWorker;
 import tech.kayys.farabi.engine.DatasetStorageInventoryJobPorts;
 import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
+import tech.kayys.farabi.engine.DatasetDeletionApprovalAuthorizer;
 import tech.kayys.farabi.engine.DatasetStorageInventoryPorts.Inventory;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageReferenceStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryReportStore;
@@ -52,6 +53,10 @@ public class DatasetImportWorkerBeans {
     @Produces @Singleton @DefaultBean
     DatasetStorageOperatorAuthorizer denyStorageOperationsByDefault() {
         return (subjectId, workspaceId) -> { throw new jakarta.ws.rs.ForbiddenException("storage operator authorization is not configured"); };
+    }
+    @Produces @Singleton @DefaultBean
+    DatasetDeletionApprovalAuthorizer denyDeletionApprovalsByDefault() {
+        return (subjectId, workspaceId) -> { throw new jakarta.ws.rs.ForbiddenException("dataset deletion approval authorization is not configured"); };
     }
     @Produces @Singleton JdbcDatasetCatalog datasetCatalog(DataSource source) { return new JdbcDatasetCatalog(source); }
     @Produces @Singleton JdbcDatasetImportJobStore datasetImportJobs(DataSource source) { return new JdbcDatasetImportJobStore(source); }
