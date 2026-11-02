@@ -23,7 +23,6 @@ class JdbcDatasetRetentionStoreTest {
             s.execute("CREATE TABLE farabi_dataset_deletions(id UUID PRIMARY KEY,dataset_id UUID,workspace_id VARCHAR(200),status VARCHAR(20))");
             s.execute("CREATE TABLE farabi_dataset_retention_exemptions(id UUID PRIMARY KEY,workspace_id VARCHAR(200),dataset_id UUID,reason TEXT,created_by VARCHAR(300),created_at TIMESTAMP WITH TIME ZONE,expires_at TIMESTAMP WITH TIME ZONE,revoked_by VARCHAR(300),revoked_at TIMESTAMP WITH TIME ZONE,revoke_reason TEXT)");
             s.execute("CREATE TABLE farabi_dataset_retention_audit(id UUID PRIMARY KEY,workspace_id VARCHAR(200),policy_id UUID,dataset_id UUID,exemption_id UUID,event_type VARCHAR(30),actor_id VARCHAR(300),reason TEXT,occurred_at TIMESTAMP WITH TIME ZONE)");
-            s.execute("CREATE TABLE farabi_dataset_deletions(id UUID PRIMARY KEY,dataset_id UUID,workspace_id VARCHAR(200),status VARCHAR(20))");
             try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_datasets(id,workspace_id,name,source_id,created_at,lifecycle) VALUES(?,?,?,?,?,'PROFILED')")){
                 p.setObject(1,dataset);p.setString(2,"ws");p.setString(3,"sales");p.setString(4,"upload");p.setTimestamp(5,Timestamp.from(now.minusSeconds(86400*90L)));p.executeUpdate();
             }
