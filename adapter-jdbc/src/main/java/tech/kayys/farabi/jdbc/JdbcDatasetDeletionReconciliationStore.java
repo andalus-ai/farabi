@@ -42,8 +42,8 @@ public final class JdbcDatasetDeletionReconciliationStore implements Repository 
     @Override public void save(Report report){
         try(Connection c=source.getConnection()){
             c.setAutoCommit(false);
-            try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_deletion_reconciliation_reports(id,workspace_id,inspected_at,datasets_inspected,deletion_jobs_inspected,finding_count,consistent) VALUES(?,?,?,?,?,?,?)")){
-                p.setObject(1,report.id());p.setString(2,report.workspaceId());p.setTimestamp(3,Timestamp.from(report.inspectedAt()));p.setInt(4,report.datasetsInspected());p.setInt(5,report.deletionJobsInspected());p.setInt(6,report.findings().size());p.setBoolean(7,report.consistent());p.executeUpdate();
+            try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_deletion_reconciliation_reports(id,workspace_id,requested_by,inspected_at,datasets_inspected,deletion_jobs_inspected,finding_count,consistent) VALUES(?,?,?,?,?,?,?,?)")){
+                p.setObject(1,report.id());p.setString(2,report.workspaceId());p.setString(3,report.requestedBy());p.setTimestamp(4,Timestamp.from(report.inspectedAt()));p.setInt(5,report.datasetsInspected());p.setInt(6,report.deletionJobsInspected());p.setInt(7,report.findings().size());p.setBoolean(8,report.consistent());p.executeUpdate();
             }
             try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_deletion_reconciliation_findings(id,report_id,workspace_id,finding_type,dataset_id,deletion_job_id,location_ref,expected_bytes,actual_bytes) VALUES(?,?,?,?,?,?,?,?,?)")){
                 for(Finding f:report.findings()){
@@ -57,7 +57,7 @@ public final class JdbcDatasetDeletionReconciliationStore implements Repository 
 
     @Override public List<Report> recent(String workspace,int limit){
         if(limit<1||limit>100)throw new IllegalArgumentException("limit must be 1..100");
-        String sql="SELECT id,workspace_id,inspected_at,datasets_inspected,deletion_jobs_inspected FROM farabi_dataset_deletion_reconciliation_reports WHERE workspace_id=? ORDER BY inspected_at DESC,id DESC LIMIT ?";
+        String sql="SELECT id,workspace_id,requested_by,inspected_at,datasets_inspected,deletion_jobs_inspected FROM farabi_dataset_deletion_reconciliation_reports WHERE workspace_id=? ORDER BY inspected_at DESC,id DESC LIMIT ?";
         try(Connection c=source.getConnection();PreparedStatement p=c.prepareStatement(sql)){
             p.setString(1,workspace);p.setInt(2,limit);
             try(ResultSet r=p.executeQuery()){
@@ -67,7 +67,7 @@ public final class JdbcDatasetDeletionReconciliationStore implements Repository 
                     try(PreparedStatement q=c.prepareStatement("SELECT finding_type,dataset_id,deletion_job_id,location_ref,expected_bytes,actual_bytes FROM farabi_dataset_deletion_reconciliation_findings WHERE report_id=? AND workspace_id=? ORDER BY id")){
                         q.setObject(1,id);q.setString(2,workspace);try(ResultSet fr=q.executeQuery()){while(fr.next())findings.add(new Finding(FindingType.valueOf(fr.getString(1)),fr.getObject(2,UUID.class),fr.getObject(3,UUID.class),fr.getString(4),fr.getLong(5),fr.getLong(6)));}
                     }
-                    out.add(new Report(id,r.getString(2),r.getTimestamp(3).toInstant(),r.getInt(4),r.getInt(5),findings));
+                    out.add(new Report(id,r.getString(2),r.getString(3),r.getTimestamp(4).toInstant(),r.getInt(5),r.getInt(6),findings));
                 }
                 return List.copyOf(out);
             }
