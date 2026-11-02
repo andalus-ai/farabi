@@ -23,6 +23,12 @@ public final class JdbcDatasetDeletionStore implements Store {
                     try(ResultSet r=p.executeQuery()){if(!r.next()){c.rollback();return Optional.empty();}
                         location=r.getString(1);requested=r.getTimestamp(2);}
                 }
+                // Legal holds are checked while the dataset row is locked, so a hold
+                // placement operation must take the same dataset lock before it commits.
+                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_legal_holds WHERE dataset_id=? AND workspace_id=? AND released_at IS NULL LIMIT 1")){
+                    p.setObject(1,datasetId);p.setString(2,workspace);
+                    try(ResultSet r=p.executeQuery()){if(r.next())throw new IllegalStateException("dataset is under an active legal hold");}
+                }
                 if(requested==null){
                     try(PreparedStatement p=c.prepareStatement("UPDATE farabi_datasets SET lifecycle='DELETE_PENDING',deletion_requested_at=?,updated_at=? WHERE id=? AND workspace_id=?")){
                         p.setTimestamp(1,Timestamp.from(now));p.setTimestamp(2,Timestamp.from(now));p.setObject(3,datasetId);p.setString(4,workspace);p.executeUpdate();
@@ -52,7 +58,7 @@ public final class JdbcDatasetDeletionStore implements Store {
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_dataset_deletions SET status='FAILED',lease_owner=NULL,lease_token=NULL,lease_until=NULL,updated_at=? WHERE status='RUNNING' AND attempts>=max_attempts AND lease_until<=?")){
                     p.setTimestamp(1,Timestamp.from(lease.now()));p.setTimestamp(2,Timestamp.from(lease.now()));p.executeUpdate();
                 }
-                String sql="SELECT * FROM farabi_dataset_deletions WHERE attempts<max_attempts AND available_at<=? AND (status='QUEUED' OR (status='RUNNING' AND lease_until<=?)) ORDER BY created_at,id LIMIT 1 FOR UPDATE SKIP LOCKED";
+                String sql="SELECT d.* FROM farabi_dataset_deletions d JOIN farabi_datasets ds ON ds.id=d.dataset_id AND ds.workspace_id=d.workspace_id WHERE d.attempts<d.max_attempts AND d.available_at<=? AND (d.status='QUEUED' OR (d.status='RUNNING' AND d.lease_until<=?)) AND NOT EXISTS (SELECT 1 FROM farabi_dataset_legal_holds h WHERE h.dataset_id=d.dataset_id AND h.workspace_id=d.workspace_id AND h.released_at IS NULL) ORDER BY d.created_at,d.id LIMIT 1 FOR UPDATE OF d SKIP LOCKED";
                 Deletion d;
                 try(PreparedStatement p=c.prepareStatement(sql)){p.setTimestamp(1,Timestamp.from(lease.now()));p.setTimestamp(2,Timestamp.from(lease.now()));try(ResultSet r=p.executeQuery()){if(!r.next()){c.commit();return Optional.empty();}d=read(r);}}
                 UUID token=UUID.randomUUID();
