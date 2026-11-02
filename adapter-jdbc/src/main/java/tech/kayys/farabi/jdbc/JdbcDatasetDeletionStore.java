@@ -25,6 +25,12 @@ public final class JdbcDatasetDeletionStore implements Store {
         try(Connection c=source.getConnection()){
             c.setAutoCommit(false);
             try{
+                List<ExpiredLease> reclaimed=new ArrayList<>();
+                try(PreparedStatement p=c.prepareStatement("SELECT id,workspace_id,dataset_id,attempts FROM farabi_dataset_deletions WHERE status='RUNNING' AND attempts<max_attempts AND lease_until<=? ORDER BY workspace_id,id FOR UPDATE SKIP LOCKED")){
+                    p.setTimestamp(1,Timestamp.from(lease.now()));try(ResultSet r=p.executeQuery()){while(r.next())reclaimed.add(new ExpiredLease(r.getObject(1,UUID.class),r.getString(2),r.getObject(3,UUID.class),r.getInt(4)));}
+                }
+                for(ExpiredLease expired:reclaimed)
+                    audit(c,expired.jobId(),expired.workspaceId(),expired.datasetId(),"LEASE_EXPIRED",expired.attempts(),null,null,"LEASE_TIMEOUT",lease.now());
                 List<ExpiredLease> exhausted=new ArrayList<>();
                 try(PreparedStatement p=c.prepareStatement("SELECT id,workspace_id,dataset_id,attempts FROM farabi_dataset_deletions WHERE status='RUNNING' AND attempts>=max_attempts AND lease_until<=? ORDER BY workspace_id,id FOR UPDATE SKIP LOCKED")){
                     p.setTimestamp(1,Timestamp.from(lease.now()));try(ResultSet r=p.executeQuery()){while(r.next())exhausted.add(new ExpiredLease(r.getObject(1,UUID.class),r.getString(2),r.getObject(3,UUID.class),r.getInt(4)));}
