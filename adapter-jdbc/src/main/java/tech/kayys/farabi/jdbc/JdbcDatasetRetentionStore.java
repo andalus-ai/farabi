@@ -63,6 +63,13 @@ public final class JdbcDatasetRetentionStore {
             c.setAutoCommit(false);
             try{
                 Exemption e;
+                try(PreparedStatement p=c.prepareStatement("SELECT * FROM farabi_dataset_retention_exemptions WHERE id=? AND workspace_id=?")){
+                    p.setObject(1,id);p.setString(2,workspace);try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("exemption not found");e=readExemption(r);}
+                }
+                // Serialize revocation with deletion requests and exemption creation via dataset row.
+                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_datasets WHERE id=? AND workspace_id=? FOR UPDATE")){
+                    p.setObject(1,e.datasetId());p.setString(2,workspace);try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("dataset not found");}
+                }
                 try(PreparedStatement p=c.prepareStatement("SELECT * FROM farabi_dataset_retention_exemptions WHERE id=? AND workspace_id=? FOR UPDATE")){
                     p.setObject(1,id);p.setString(2,workspace);try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("exemption not found");e=readExemption(r);}
                 }
