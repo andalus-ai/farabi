@@ -17,6 +17,7 @@ CREATE TABLE farabi_dataset_deletion_approvals (
     FOREIGN KEY (dataset_id, workspace_id) REFERENCES farabi_datasets(id, workspace_id),
     FOREIGN KEY (deletion_job_id) REFERENCES farabi_dataset_deletions(id),
     CHECK (expires_at > requested_at),
+    CHECK (status = 'PENDING' OR approver_id <> requester_id),
     CHECK ((status = 'PENDING' AND approver_id IS NULL AND decision_reason IS NULL AND decided_at IS NULL AND deletion_job_id IS NULL)
         OR (status = 'APPROVED' AND approver_id IS NOT NULL AND decision_reason IS NOT NULL AND decided_at IS NOT NULL AND deletion_job_id IS NOT NULL)
         OR (status IN ('REJECTED','EXPIRED') AND approver_id IS NOT NULL AND decision_reason IS NOT NULL AND decided_at IS NOT NULL AND deletion_job_id IS NULL))
