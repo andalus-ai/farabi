@@ -20,6 +20,7 @@ class JdbcDatasetRetentionStoreTest {
         try(Connection c=source.getConnection();Statement s=c.createStatement()){
             s.execute("CREATE TABLE farabi_datasets(id UUID PRIMARY KEY,workspace_id VARCHAR(200),name VARCHAR(300),source_id VARCHAR(200),created_at TIMESTAMP WITH TIME ZONE,lifecycle VARCHAR(40))");
             s.execute("CREATE TABLE farabi_dataset_retention_policies(id UUID PRIMARY KEY,workspace_id VARCHAR(200),source_id VARCHAR(200),retention_days INTEGER,effective_at TIMESTAMP WITH TIME ZONE,created_by VARCHAR(300),created_at TIMESTAMP WITH TIME ZONE,supersedes_policy_id UUID)");
+            s.execute("CREATE TABLE farabi_dataset_deletions(id UUID PRIMARY KEY,dataset_id UUID,workspace_id VARCHAR(200),status VARCHAR(20))");
             s.execute("CREATE TABLE farabi_dataset_retention_exemptions(id UUID PRIMARY KEY,workspace_id VARCHAR(200),dataset_id UUID,reason TEXT,created_by VARCHAR(300),created_at TIMESTAMP WITH TIME ZONE,expires_at TIMESTAMP WITH TIME ZONE,revoked_by VARCHAR(300),revoked_at TIMESTAMP WITH TIME ZONE,revoke_reason TEXT)");
             s.execute("CREATE TABLE farabi_dataset_retention_audit(id UUID PRIMARY KEY,workspace_id VARCHAR(200),policy_id UUID,dataset_id UUID,exemption_id UUID,event_type VARCHAR(30),actor_id VARCHAR(300),reason TEXT,occurred_at TIMESTAMP WITH TIME ZONE)");
             s.execute("CREATE TABLE farabi_dataset_deletions(id UUID PRIMARY KEY,dataset_id UUID,workspace_id VARCHAR(200),status VARCHAR(20))");
