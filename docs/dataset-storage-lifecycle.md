@@ -155,6 +155,32 @@ the existing job is reused rather than duplicating the dataset's unique deletion
 job already RUNNING requires manual reconciliation because object deletion may have started.
 No automatic migration approves historical deletion work.
 
+## Cross-system deletion reconciliation (V21)
+
+Migration V21 adds immutable, workspace-scoped deletion reconciliation reports and findings.
+The operator-triggered reconciliation is read-only: it inspects the catalog, deletion outbox,
+provider object state, and quota ledger without deleting objects or changing lifecycle/accounting.
+
+- `POST /api/storage/deletion-reconciliation` creates a fresh report.
+- `GET /api/storage/deletion-reconciliation?limit=20` reads recent reports for the authenticated workspace.
+- Both routes require the storage operator authorization boundary; workspace scope comes only
+  from the authenticated identity.
+
+Findings include:
+
+- `ARCHIVED_OBJECT_PRESENT`: an object still exists for a dataset marked ARCHIVED.
+- `SUCCEEDED_DATASET_NOT_ARCHIVED`: a successful deletion job is linked to a dataset that is
+  not ARCHIVED.
+- `ARCHIVED_STORAGE_BYTES_NONZERO`: archived metadata still carries committed storage bytes.
+- `LEDGER_USED_MISMATCH`: workspace used bytes differ from the sum of non-archived dataset bytes.
+- `LEDGER_RESERVED_MISMATCH`: workspace reserved bytes differ from active RESERVED rows.
+
+Reports and findings are append-only. Provider lookups are workspace-fenced. A provider lookup
+failure aborts report creation rather than being interpreted as absence. The report is a
+diagnostic snapshot, not a repair command: operators must review evidence and use the existing
+governed deletion or quota-repair workflows. No finding triggers automatic object deletion,
+dataset archival, quota adjustment, or reservation release.
+
 ## Operator-controlled deletion recovery
 
 A terminally failed deletion is never retried merely because a worker restarts. Migration V19 extends the immutable execution audit with `RECOVERY_QUEUED` events that record the operator, mandatory reason, and recovery sequence. Recovery reuses the original deletion job and its maker-checker approval; it does not create a new approval or a duplicate job.
