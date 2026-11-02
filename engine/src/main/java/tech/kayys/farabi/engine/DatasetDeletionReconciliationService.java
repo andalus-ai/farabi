@@ -22,7 +22,7 @@ public final class DatasetDeletionReconciliationService {
     }
     public record Finding(FindingType type,UUID datasetId,UUID deletionJobId,String locationRef,
             long expectedBytes,long actualBytes) {}
-    public record Report(UUID id,String workspaceId,Instant inspectedAt,int datasetsInspected,
+    public record Report(UUID id,String workspaceId,String requestedBy,Instant inspectedAt,int datasetsInspected,
             int deletionJobsInspected,List<Finding> findings) {
         public Report { findings=List.copyOf(findings); }
         public boolean consistent(){return findings.isEmpty();}
@@ -38,8 +38,9 @@ public final class DatasetDeletionReconciliationService {
     public DatasetDeletionReconciliationService(Repository repository,Inventory inventory,Clock clock){
         this.repository=Objects.requireNonNull(repository);this.inventory=Objects.requireNonNull(inventory);this.clock=Objects.requireNonNull(clock);
     }
-    public Report inspect(String workspaceId){
+    public Report inspect(String workspaceId,String requestedBy){
         if(workspaceId==null||workspaceId.isBlank())throw new IllegalArgumentException("workspaceId required");
+        if(requestedBy==null||requestedBy.isBlank())throw new IllegalArgumentException("requestedBy required");
         Snapshot snapshot=repository.snapshot(workspaceId);
         List<Finding> findings=new ArrayList<>();
         for(DatasetState dataset:snapshot.datasets()){
@@ -61,7 +62,7 @@ public final class DatasetDeletionReconciliationService {
             findings.add(new Finding(FindingType.LEDGER_USED_MISMATCH,null,null,null,snapshot.expectedUsedBytes(),snapshot.ledgerUsedBytes()));
         if(snapshot.ledgerReservedBytes()!=snapshot.expectedReservedBytes())
             findings.add(new Finding(FindingType.LEDGER_RESERVED_MISMATCH,null,null,null,snapshot.expectedReservedBytes(),snapshot.ledgerReservedBytes()));
-        Report report=new Report(UUID.randomUUID(),workspaceId,clock.instant(),snapshot.datasets().size(),snapshot.deletions().size(),findings);
+        Report report=new Report(UUID.randomUUID(),workspaceId,requestedBy,clock.instant(),snapshot.datasets().size(),snapshot.deletions().size(),findings);
         repository.save(report);
         return report;
     }
