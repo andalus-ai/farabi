@@ -70,8 +70,8 @@ class JdbcDatasetDeletionApprovalStoreTest {
     @Test void approvalCannotBeUsedAcrossWorkspaceOrAfterExpiry() {
         var pending=store.request(dataset,"ws","maker","obsolete data",now,Duration.ofSeconds(30));
         assertTrue(store.find(pending.id(),"other").isEmpty());
-        assertThrows(JdbcDatasetDeletionApprovalStore.ApprovalExpiredException.class,
-            ()->store.approve(pending.id(),"ws","checker","late approval",now.plusSeconds(31),4));
+        var expired=store.approve(pending.id(),"ws","checker","late approval",now.plusSeconds(31),4);
+        assertEquals("EXPIRED",expired.status());
         assertEquals("EXPIRED",store.find(pending.id(),"ws").orElseThrow().status());
         var replacement=store.request(dataset,"ws","maker-2","new request",now.plusSeconds(32),Duration.ofHours(1));
         assertEquals("PENDING",replacement.status());
