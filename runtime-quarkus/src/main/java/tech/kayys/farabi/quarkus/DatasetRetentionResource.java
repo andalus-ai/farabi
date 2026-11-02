@@ -27,7 +27,7 @@ public class DatasetRetentionResource {
     @POST @Path("/policies")
     public Response createPolicy(PolicyRequest request) {
         String ws=workspace();authorize(ws);
-        if(request==null||request.retentionDays()<1||request.reason()==null||request.reason().isBlank())
+        if(request==null||request.retentionDays()<1||request.reason()==null||request.reason().isBlank()||(request.sourceId()!=null&&request.sourceId().isBlank()))
             throw new BadRequestException("retentionDays and reason are required");
         Instant effective=request.effectiveAt()==null?Instant.now():request.effectiveAt();
         Policy policy=store().createPolicy(ws,request.sourceId(),request.retentionDays(),effective,subject(),request.reason(),Instant.now());
@@ -43,8 +43,10 @@ public class DatasetRetentionResource {
     public Response exempt(@PathParam("datasetId") UUID datasetId,ExemptionRequest request) {
         String ws=workspace();authorize(ws);
         if(request==null||request.reason()==null||request.reason().isBlank())throw new BadRequestException("reason is required");
-        Exemption exemption=store().createExemption(datasetId,ws,subject(),request.reason(),request.expiresAt(),Instant.now());
-        return Response.status(Response.Status.CREATED).entity(exemption).build();
+        try {
+            Exemption exemption=store().createExemption(datasetId,ws,subject(),request.reason(),request.expiresAt(),Instant.now());
+            return Response.status(Response.Status.CREATED).entity(exemption).build();
+        } catch(java.util.NoSuchElementException missing) { throw new NotFoundException(); }
     }
 
     @POST @Path("/exemptions/{exemptionId}/revoke")
