@@ -30,3 +30,5 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER farabi_storage_quota_repair_previews_immutable
     BEFORE UPDATE OR DELETE ON farabi_storage_quota_repair_previews
     FOR EACH ROW EXECUTE FUNCTION farabi_reject_quota_repair_preview_mutation();
+ALTER TABLE farabi_storage_quota_repair_previews
+    ADD CONSTRAINT uq_farabi_quota_repair_preview_id_workspace UNIQUE (id, workspace_id);
