@@ -16,12 +16,29 @@ public final class JdbcDatasetDeletionStore implements Store {
         try(Connection c=source.getConnection()){
             c.setAutoCommit(false);
             try{
-                String select="SELECT location_ref,deletion_requested_at FROM farabi_datasets WHERE id=? AND workspace_id=? FOR UPDATE";
-                String location; Timestamp requested;
+                String select="SELECT location_ref,deletion_requested_at,source_id,created_at FROM farabi_datasets WHERE id=? AND workspace_id=? FOR UPDATE";
+                String location,sourceId; Timestamp requested,createdAt;
                 try(PreparedStatement p=c.prepareStatement(select)){
                     p.setObject(1,datasetId);p.setString(2,workspace);
                     try(ResultSet r=p.executeQuery()){if(!r.next()){c.rollback();return Optional.empty();}
-                        location=r.getString(1);requested=r.getTimestamp(2);}
+                        location=r.getString(1);requested=r.getTimestamp(2);sourceId=r.getString(3);createdAt=r.getTimestamp(4);}
+                }
+                // Retention is a minimum-preservation rule. Without an applicable policy,
+                // deletion fails closed; an active, explicit exemption bypasses the clock.
+                boolean exempt=false;
+                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_retention_exemptions WHERE dataset_id=? AND workspace_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?) LIMIT 1")){
+                    p.setObject(1,datasetId);p.setString(2,workspace);p.setTimestamp(3,Timestamp.from(now));
+                    try(ResultSet r=p.executeQuery()){exempt=r.next();}
+                }
+                if(!exempt){
+                    Integer retentionDays=null;
+                    try(PreparedStatement p=c.prepareStatement("SELECT retention_days FROM farabi_dataset_retention_policies WHERE workspace_id=? AND (source_id=? OR source_id IS NULL) AND effective_at<=? ORDER BY CASE WHEN source_id=? THEN 0 ELSE 1 END,effective_at DESC,created_at DESC LIMIT 1")){
+                        p.setString(1,workspace);p.setString(2,sourceId);p.setTimestamp(3,Timestamp.from(now));p.setString(4,sourceId);
+                        try(ResultSet r=p.executeQuery()){if(r.next())retentionDays=r.getInt(1);}
+                    }
+                    if(retentionDays==null)throw new IllegalStateException("no effective retention policy; deletion is denied");
+                    if(createdAt.toInstant().plusSeconds(Math.multiplyExact(retentionDays.longValue(),86400L)).isAfter(now))
+                        throw new IllegalStateException("dataset has not reached its retention expiry");
                 }
                 // Legal holds are checked while the dataset row is locked, so a hold
                 // placement operation must take the same dataset lock before it commits.
