@@ -28,9 +28,30 @@ The default deletion authorizer denies all requests. A deployment must provide a
 `DatasetStorageLifecyclePorts.Authorizer` implementation before exposing deletion operations.
 The worker can be enabled with the existing `FARABI_IMPORT_WORKER_ENABLED` scheduler switch.
 
+## Legal holds
+
+Migration V16 adds workspace-scoped legal holds and an append-only placement/release audit log.
+A hold records its reason, placing actor and timestamp; release requires a separate reason and
+records the releasing actor and timestamp. Hold records remain as history after release.
+
+Operator API (workspace is derived from the authenticated identity):
+
+- `POST /api/storage/legal-holds/datasets/{datasetId}` with `{"reason":"..."}` places a hold.
+- `POST /api/storage/legal-holds/{holdId}/release` with `{"reason":"..."}` releases it.
+- `GET /api/storage/legal-holds?datasetId={uuid}&limit=50` lists recent holds.
+
+All endpoints use the existing fail-closed storage operator authorizer. A deployment must replace
+the default-deny authorization policy with its RBAC implementation.
+
+Deletion requests fail while a hold is active, and the worker does not claim held datasets. Claiming
+locks both the deletion job and dataset row; hold placement takes the dataset lock and rejects a
+hold if deletion is already running. This serializes the critical race: either the hold is committed
+first and deletion cannot be claimed, or deletion has already started and the hold is rejected.
+After a deletion job is queued but not running, a hold may be placed and pauses future claims.
+
 ## Operational follow-ups
 
-This first lifecycle slice deliberately does not implement retention policies, legal holds,
-workspace quotas/usage accounting, orphan-object discovery, or an HTTP delete endpoint. Those
-need explicit policy and audit requirements. Failed deletion rows should be monitored and
+Retention policies, retention-based automatic deletion, maker-checker deletion approvals, and
+legal-hold policy administration remain separate follow-up work. A legal hold is not a retention
+policy and does not itself schedule deletion. Failed deletion rows should be monitored and
 reconciled; object-store lifecycle rules must not independently expire live dataset objects.
