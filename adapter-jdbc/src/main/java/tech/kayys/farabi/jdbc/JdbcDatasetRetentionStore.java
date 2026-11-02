@@ -23,6 +23,16 @@ public final class JdbcDatasetRetentionStore {
         try(Connection c=source.getConnection()){
             c.setAutoCommit(false);
             try{
+                // Serialize policy changes with deletion claims, which lock the same dataset rows.
+                String lockSql="SELECT id FROM farabi_datasets WHERE workspace_id=? AND (? IS NULL OR source_id=?) FOR UPDATE";
+                try(PreparedStatement p=c.prepareStatement(lockSql)){
+                    p.setString(1,workspace);p.setString(2,sourceId);p.setString(3,sourceId);
+                    try(ResultSet r=p.executeQuery()){while(r.next()) { /* acquire row locks */ }}
+                }
+                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_deletions WHERE workspace_id=? AND status='RUNNING' AND dataset_id IN (SELECT id FROM farabi_datasets WHERE workspace_id=? AND (? IS NULL OR source_id=?)) LIMIT 1")){
+                    p.setString(1,workspace);p.setString(2,workspace);p.setString(3,sourceId);p.setString(4,sourceId);
+                    try(ResultSet r=p.executeQuery()){if(r.next())throw new IllegalStateException("retention policy cannot change while an affected dataset deletion is running");}
+                }
                 UUID previous=null;
                 String q="SELECT id FROM farabi_dataset_retention_policies WHERE workspace_id=? AND source_id IS NOT DISTINCT FROM ? AND effective_at<=? ORDER BY effective_at DESC,created_at DESC LIMIT 1 FOR UPDATE";
                 try(PreparedStatement p=c.prepareStatement(q)){p.setString(1,workspace);p.setString(2,sourceId);p.setTimestamp(3,Timestamp.from(effectiveAt));try(ResultSet r=p.executeQuery()){if(r.next())previous=r.getObject(1,UUID.class);}}
@@ -77,6 +87,9 @@ public final class JdbcDatasetRetentionStore {
                     p.setObject(1,id);p.setString(2,workspace);try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("exemption not found");e=readExemption(r);}
                 }
                 if(e.revokedAt()!=null){c.commit();return e;}
+                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_deletions WHERE dataset_id=? AND workspace_id=? AND status='RUNNING' LIMIT 1")){
+                    p.setObject(1,e.datasetId());p.setString(2,workspace);try(ResultSet r=p.executeQuery()){if(r.next())throw new IllegalStateException("retention exemption cannot be revoked while deletion is running");}
+                }
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_dataset_retention_exemptions SET revoked_by=?,revoked_at=?,revoke_reason=? WHERE id=? AND workspace_id=? AND revoked_at IS NULL")){
                     p.setString(1,actor);p.setTimestamp(2,Timestamp.from(now));p.setString(3,reason);p.setObject(4,id);p.setString(5,workspace);p.executeUpdate();
                 }
