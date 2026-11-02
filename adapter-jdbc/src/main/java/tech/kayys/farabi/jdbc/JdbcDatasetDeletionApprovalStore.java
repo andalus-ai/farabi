@@ -45,7 +45,9 @@ public final class JdbcDatasetDeletionApprovalStore {
         try(Connection c=source.getConnection()){
             c.setAutoCommit(false);
             try{
-                Approval a=readLocked(c,id,workspace,false);
+                Approval snapshot=readLocked(c,id,workspace,false);
+                lockDataset(c,snapshot.datasetId(),workspace);
+                Approval a=readLocked(c,id,workspace,true);
                 if(a.status().equals("APPROVED")){c.commit();return a;}
                 if(!a.status().equals("PENDING"))throw new IllegalStateException("approval is not pending");
                 if(a.requesterId().equals(approver))throw new SecurityException("requester cannot approve their own deletion");
@@ -84,6 +86,8 @@ public final class JdbcDatasetDeletionApprovalStore {
         try(Connection c=source.getConnection()){
             c.setAutoCommit(false);
             try{
+                Approval snapshot=readLocked(c,id,workspace,false);
+                lockDataset(c,snapshot.datasetId(),workspace);
                 Approval a=readLocked(c,id,workspace,true);
                 if(!a.status().equals("PENDING"))throw new IllegalStateException("approval is not pending");
                 if(a.requesterId().equals(approver))throw new SecurityException("requester cannot decide their own deletion");
@@ -142,8 +146,13 @@ public final class JdbcDatasetDeletionApprovalStore {
             if(days==null||created.plus(Duration.ofDays(days)).isAfter(now))throw new IllegalStateException("retention eligibility is not satisfied");
         }
     }
+    private static void lockDataset(Connection c,UUID dataset,String ws)throws SQLException{
+        try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_datasets WHERE id=? AND workspace_id=? FOR UPDATE")){
+            p.setObject(1,dataset);p.setString(2,ws);try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("dataset not found");}
+        }
+    }
     private static Approval readLocked(Connection c,UUID id,String ws,boolean lock)throws SQLException{
-        try(PreparedStatement p=c.prepareStatement("SELECT * FROM farabi_dataset_deletion_approvals WHERE id=? AND workspace_id=?"+(lock?" FOR UPDATE":" FOR UPDATE"))){
+        try(PreparedStatement p=c.prepareStatement("SELECT * FROM farabi_dataset_deletion_approvals WHERE id=? AND workspace_id=?"+(lock?" FOR UPDATE":""))){
             p.setObject(1,id);p.setString(2,ws);try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("deletion approval not found");return read(r);}
         }
     }
