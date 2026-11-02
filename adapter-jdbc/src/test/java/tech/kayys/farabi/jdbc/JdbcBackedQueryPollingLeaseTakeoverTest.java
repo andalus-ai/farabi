@@ -72,6 +72,11 @@ class JdbcBackedQueryPollingLeaseTakeoverTest {
         assertStaleProviderResponseRejected(Status.FAILED);
     }
 
+    @Test
+    void staleCancelledProviderResponseCannotOverwriteSuccessAfterJdbcTakeover() throws Exception {
+        assertStaleProviderResponseRejected(Status.CANCELLED);
+    }
+
     private void assertStaleProviderResponseRejected(Status staleObservation) throws Exception {
         Instant start = Instant.parse("2026-11-01T00:00:00Z");
         Duration ttl = Duration.ofSeconds(30);
