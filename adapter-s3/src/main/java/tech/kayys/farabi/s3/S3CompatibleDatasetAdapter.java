@@ -149,6 +149,11 @@ public final class S3CompatibleDatasetAdapter implements UploadSourceIntake, Pro
         delete(new StagedSource(Format.valueOf(formatFromKey(locationRef)), locationRef), workspaceId);
     }
 
+    @Override
+    public boolean exists(String locationRef, String workspaceId) {
+        return inspect(locationRef, workspaceId).isPresent();
+    }
+
     private static String formatFromKey(String ref) {
         if (ref.endsWith(".tsv")) return "TSV";
         if (ref.endsWith(".json")) return "JSON";
