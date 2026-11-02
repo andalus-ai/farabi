@@ -176,7 +176,9 @@ Findings include:
 - `LEDGER_RESERVED_MISMATCH`: workspace reserved bytes differ from active RESERVED rows.
 
 Reports and findings are append-only. Provider lookups are workspace-fenced. A provider lookup
-failure aborts report creation rather than being interpreted as absence. The report is a
+failure aborts report creation rather than being interpreted as absence. The synchronous snapshot
+is bounded to 5,000 datasets and 5,000 deletion jobs per workspace; larger workspaces require a
+future partitioned/queued reconciliation runner. The report is a
 diagnostic snapshot, not a repair command: operators must review evidence and use the existing
 governed deletion or quota-repair workflows. No finding triggers automatic object deletion,
 dataset archival, quota adjustment, or reservation release.
