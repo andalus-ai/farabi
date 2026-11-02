@@ -206,13 +206,13 @@ public final class JdbcDatasetDeletionStore implements Store {
     }
 
     public record ExecutionAudit(UUID id,UUID jobId,UUID datasetId,String eventType,int attempt,
-            String workerId,UUID leaseToken,String errorCode,Instant occurredAt) {}
+            String workerId,UUID leaseToken,String errorCode,String actorId,String reason,Instant occurredAt) {}
     public List<ExecutionAudit> audit(UUID jobId,String workspace,int limit){
         if(limit<1||limit>100)throw new IllegalArgumentException("limit must be 1..100");
         String sql="SELECT a.* FROM farabi_dataset_deletion_execution_audit a JOIN farabi_dataset_deletions d ON d.id=a.job_id AND d.workspace_id=a.workspace_id WHERE a.job_id=? AND a.workspace_id=? ORDER BY a.occurred_at DESC,a.id DESC LIMIT ?";
         try(Connection c=source.getConnection();PreparedStatement p=c.prepareStatement(sql)){
             p.setObject(1,jobId);p.setString(2,workspace);p.setInt(3,limit);
-            try(ResultSet r=p.executeQuery()){List<ExecutionAudit> out=new ArrayList<>();while(r.next())out.add(new ExecutionAudit(r.getObject("id",UUID.class),r.getObject("job_id",UUID.class),r.getObject("dataset_id",UUID.class),r.getString("event_type"),r.getInt("attempt"),r.getString("worker_id"),r.getObject("lease_token",UUID.class),r.getString("error_code"),r.getTimestamp("occurred_at").toInstant()));return List.copyOf(out);}
+            try(ResultSet r=p.executeQuery()){List<ExecutionAudit> out=new ArrayList<>();while(r.next())out.add(new ExecutionAudit(r.getObject("id",UUID.class),r.getObject("job_id",UUID.class),r.getObject("dataset_id",UUID.class),r.getString("event_type"),r.getInt("attempt"),r.getString("worker_id"),r.getObject("lease_token",UUID.class),r.getString("error_code"),r.getString("actor_id"),r.getString("reason"),r.getTimestamp("occurred_at").toInstant()));return List.copyOf(out);}
         }catch(SQLException e){throw new IllegalStateException("read deletion execution audit failed",e);}
     }
 
