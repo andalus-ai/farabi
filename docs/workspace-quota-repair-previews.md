@@ -20,3 +20,17 @@ The proposal compares:
 The proposed used and reserved values are the independently observed aggregates. Deltas are proposed value minus ledger value. A proposal is marked `applicable=false` if the proposed used plus reserved bytes exceed the configured quota, or if committed reservation bytes do not reconcile with active dataset bytes. This flag is diagnostic only and is not an approval.
 
 Previews expire after the configured lifetime (`farabi.storage.quota-repair-preview.lifetime`, default `PT15M`, maximum one hour). Records are append-only. There is deliberately no apply, approve, or quota mutation endpoint in this phase. A later application workflow must re-read current values, require explicit operator approval, revalidate the preview, and apply changes transactionally with an audit trail.
+
+## Explicit approval and application
+
+A proposal may be applied only through an explicit operator action:
+
+- `POST /api/storage/usage/repair-previews/{planId}/apply`
+
+The caller is the approver; the identity is taken from the authenticated principal, and the workspace is taken from the authenticated workspace claim. The endpoint uses the same fail-closed operator authorizer as preview creation.
+
+Application is transactional. The JDBC adapter locks the immutable preview and workspace ledger, re-reads the current quota counters and independently aggregates active dataset bytes, active reservations, and committed reservation bytes. It rejects expired previews, inapplicable previews, changed preview contents, and any ledger or aggregate drift since preview creation with HTTP 409. It also checks that committed reservation bytes still equal active dataset bytes and that the recomputed used plus reserved total fits the current quota.
+
+On success, the used and reserved counters are updated and an immutable application audit row is inserted in the same database transaction. The application table has a unique preview reference, so retries return the original application instead of applying the adjustment twice. The audit record captures the approver and before/after counters. Database triggers reject update and delete operations on application audit rows.
+
+No dataset rows, reservation rows, object-store objects, or quota limit are changed. Only the two aggregate counters are repaired. If underlying metadata is inconsistent, the preview is marked inapplicable or application is rejected; operators must resolve that source-of-truth inconsistency first.
