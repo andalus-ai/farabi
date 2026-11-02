@@ -104,7 +104,7 @@ public final class JdbcDatasetDeletionStore implements Store {
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_dataset_deletions SET status=?,available_at=?,lease_owner=NULL,lease_token=NULL,lease_until=NULL,updated_at=? WHERE id=?")){
                     p.setString(1,status);p.setTimestamp(2,Timestamp.from(retryAt));p.setTimestamp(3,Timestamp.from(now));p.setObject(4,id);p.executeUpdate();
                 }
-                audit(c,id,workspace,dataset,"RETRY_SCHEDULED".equals(status)?"RETRY_SCHEDULED":"FAILED",attempt,worker,token,"OBJECT_DELETE_FAILED",now);
+                audit(c,id,workspace,dataset,"QUEUED".equals(status)?"RETRY_SCHEDULED":"FAILED",attempt,worker,token,"OBJECT_DELETE_FAILED",now);
                 c.commit();return true;
             }catch(Exception e){c.rollback();if(e instanceof RuntimeException re)throw re;throw new IllegalStateException(e);}
             finally{c.setAutoCommit(true);}
@@ -132,7 +132,7 @@ public final class JdbcDatasetDeletionStore implements Store {
         String sql="SELECT a.* FROM farabi_dataset_deletion_execution_audit a JOIN farabi_dataset_deletions d ON d.id=a.job_id AND d.workspace_id=a.workspace_id WHERE a.job_id=? AND a.workspace_id=? ORDER BY a.occurred_at DESC,a.id DESC LIMIT ?";
         try(Connection c=source.getConnection();PreparedStatement p=c.prepareStatement(sql)){
             p.setObject(1,jobId);p.setString(2,workspace);p.setInt(3,limit);
-            try(ResultSet r=p.executeQuery()){List<ExecutionAudit> out=new ArrayList<>();while(r.next())out.add(new ExecutionAudit(r.getObject("id",UUID.class),r.getObject("job_id",UUID.class),r.getObject("dataset_id",UUID.class),r.getString("event_type"),r.getInt("attempts"),r.getString("worker_id"),r.getObject("lease_token",UUID.class),r.getString("error_code"),r.getTimestamp("occurred_at").toInstant()));return List.copyOf(out);}
+            try(ResultSet r=p.executeQuery()){List<ExecutionAudit> out=new ArrayList<>();while(r.next())out.add(new ExecutionAudit(r.getObject("id",UUID.class),r.getObject("job_id",UUID.class),r.getObject("dataset_id",UUID.class),r.getString("event_type"),r.getInt("attempt"),r.getString("worker_id"),r.getObject("lease_token",UUID.class),r.getString("error_code"),r.getTimestamp("occurred_at").toInstant()));return List.copyOf(out);}
         }catch(SQLException e){throw new IllegalStateException("read deletion execution audit failed",e);}
     }
 
