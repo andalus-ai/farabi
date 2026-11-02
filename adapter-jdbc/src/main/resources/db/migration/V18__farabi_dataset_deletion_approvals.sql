@@ -51,6 +51,16 @@ CREATE TRIGGER farabi_dataset_deletion_approval_audit_immutable
     BEFORE UPDATE OR DELETE ON farabi_dataset_deletion_approval_audit
     FOR EACH ROW EXECUTE FUNCTION farabi_reject_deletion_approval_audit_mutation();
 
+ALTER TABLE farabi_dataset_deletions
+    ADD CONSTRAINT uq_farabi_dataset_deletions_id_workspace UNIQUE (id,workspace_id),
+    ADD CONSTRAINT fk_farabi_deletion_dataset_workspace
+        FOREIGN KEY (dataset_id,workspace_id) REFERENCES farabi_datasets(id,workspace_id),
+    ADD CONSTRAINT fk_farabi_deletion_approval_workspace
+        FOREIGN KEY (approval_id,workspace_id) REFERENCES farabi_dataset_deletion_approvals(id,workspace_id);
+ALTER TABLE farabi_dataset_deletion_approvals
+    ADD CONSTRAINT fk_farabi_approval_job_workspace
+        FOREIGN KEY (deletion_job_id,workspace_id) REFERENCES farabi_dataset_deletions(id,workspace_id);
+
 CREATE FUNCTION farabi_guard_deletion_approval_transition() RETURNS trigger AS $$
 BEGIN
     IF TG_OP = 'DELETE' THEN
