@@ -50,3 +50,22 @@ $$ LANGUAGE plpgsql;
 CREATE TRIGGER farabi_dataset_deletion_approval_audit_immutable
     BEFORE UPDATE OR DELETE ON farabi_dataset_deletion_approval_audit
     FOR EACH ROW EXECUTE FUNCTION farabi_reject_deletion_approval_audit_mutation();
+
+CREATE FUNCTION farabi_guard_deletion_approval_transition() RETURNS trigger AS $$
+BEGIN
+    IF TG_OP = 'DELETE' THEN
+        RAISE EXCEPTION 'deletion approval records are retained permanently';
+    END IF;
+    IF OLD.status <> 'PENDING' OR NEW.status NOT IN ('APPROVED','REJECTED','EXPIRED')
+       OR NEW.id <> OLD.id OR NEW.workspace_id <> OLD.workspace_id
+       OR NEW.dataset_id <> OLD.dataset_id OR NEW.requester_id <> OLD.requester_id
+       OR NEW.request_reason <> OLD.request_reason OR NEW.requested_at <> OLD.requested_at
+       OR NEW.expires_at <> OLD.expires_at THEN
+        RAISE EXCEPTION 'invalid deletion approval state transition';
+    END IF;
+    RETURN NEW;
+END;
+$$ LANGUAGE plpgsql;
+CREATE TRIGGER farabi_dataset_deletion_approval_transition
+    BEFORE UPDATE OR DELETE ON farabi_dataset_deletion_approvals
+    FOR EACH ROW EXECUTE FUNCTION farabi_guard_deletion_approval_transition();
