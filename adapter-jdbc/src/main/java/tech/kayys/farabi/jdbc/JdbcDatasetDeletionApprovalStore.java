@@ -10,6 +10,7 @@ public final class JdbcDatasetDeletionApprovalStore {
     public record Approval(UUID id,String workspaceId,UUID datasetId,String requesterId,String requestReason,
             Instant requestedAt,Instant expiresAt,String status,String approverId,String decisionReason,
             Instant decidedAt,UUID deletionJobId) {}
+    public record AuditEvent(UUID id,UUID approvalId,UUID datasetId,String eventType,String actorId,String reason,Instant occurredAt) {}
     private final DataSource source;
     public JdbcDatasetDeletionApprovalStore(DataSource source){this.source=Objects.requireNonNull(source);}
 
@@ -116,6 +117,14 @@ public final class JdbcDatasetDeletionApprovalStore {
         }catch(SQLException e){throw new IllegalStateException("list deletion approvals failed",e);}
     }
 
+
+    public List<AuditEvent> audit(UUID approvalId,String workspace){
+        String sql="SELECT a.id,a.approval_id,a.dataset_id,a.event_type,a.actor_id,a.reason,a.occurred_at FROM farabi_dataset_deletion_approval_audit a JOIN farabi_dataset_deletion_approvals p ON p.id=a.approval_id AND p.workspace_id=a.workspace_id WHERE a.approval_id=? AND a.workspace_id=? ORDER BY a.occurred_at,a.id";
+        try(Connection c=source.getConnection();PreparedStatement p=c.prepareStatement(sql)){
+            p.setObject(1,approvalId);p.setString(2,workspace);
+            try(ResultSet r=p.executeQuery()){List<AuditEvent> out=new ArrayList<>();while(r.next())out.add(new AuditEvent(r.getObject("id",UUID.class),r.getObject("approval_id",UUID.class),r.getObject("dataset_id",UUID.class),r.getString("event_type"),r.getString("actor_id"),r.getString("reason"),r.getTimestamp("occurred_at").toInstant()));return List.copyOf(out);}
+        }catch(SQLException e){throw new IllegalStateException("read deletion approval audit failed",e);}
+    }
 
     private static void expirePendingForDataset(Connection c,UUID dataset,String ws,Instant now)throws SQLException{
         List<UUID> expired=new ArrayList<>();
