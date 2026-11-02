@@ -14,4 +14,13 @@ public final class QueryPorts {
         Optional<Execution> find(UUID id, String workspaceId);
         boolean transition(UUID id, String workspaceId, Status expected, Status next, String providerJobId);
     }
+
+    /**
+     * Reads lifecycle and lease ownership/fencing metadata as one authoritative
+     * workspace-scoped observation after an uncertain completion write.
+     */
+    @FunctionalInterface
+    public interface CompletionReconciliationReader {
+        CompletionReconciliation.ReadResult read(UUID executionId, String workspaceId);
+    }
 }
