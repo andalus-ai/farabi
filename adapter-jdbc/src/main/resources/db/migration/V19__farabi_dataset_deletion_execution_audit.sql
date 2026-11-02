@@ -4,15 +4,19 @@ CREATE TABLE farabi_dataset_deletion_execution_audit (
     workspace_id VARCHAR(200) NOT NULL,
     dataset_id UUID NOT NULL,
     event_type VARCHAR(32) NOT NULL CHECK (event_type IN
-        ('CLAIMED','LEASE_EXPIRED','RETRY_SCHEDULED','FAILED','LEASE_EXHAUSTED','SUCCEEDED')),
+        ('CLAIMED','LEASE_EXPIRED','RETRY_SCHEDULED','FAILED','LEASE_EXHAUSTED','SUCCEEDED','RECOVERY_QUEUED')),
     attempt INTEGER NOT NULL CHECK (attempt >= 0),
     worker_id VARCHAR(300),
     lease_token UUID,
     error_code VARCHAR(100),
+    actor_id VARCHAR(300),
+    reason TEXT,
     occurred_at TIMESTAMPTZ NOT NULL,
     FOREIGN KEY (job_id,workspace_id) REFERENCES farabi_dataset_deletions(id,workspace_id),
     FOREIGN KEY (dataset_id,workspace_id) REFERENCES farabi_datasets(id,workspace_id),
-    UNIQUE (job_id,event_type,attempt)
+    UNIQUE (job_id,event_type,attempt),
+    CHECK ((event_type = 'RECOVERY_QUEUED' AND actor_id IS NOT NULL AND length(trim(actor_id)) > 0 AND reason IS NOT NULL AND length(trim(reason)) > 0)
+        OR (event_type <> 'RECOVERY_QUEUED' AND actor_id IS NULL AND reason IS NULL))
 );
 CREATE INDEX idx_farabi_deletion_execution_audit
     ON farabi_dataset_deletion_execution_audit(workspace_id,job_id,occurred_at DESC);
