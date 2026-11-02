@@ -243,6 +243,80 @@ class JdbcWorkerLeaseRepositoryTest {
     }
 
     @Test
+    void failedCompletionStatementPreservesExecutionAndLeaseForRetry() throws Exception {
+        UUID executionId = insertExecution("workspace-a", Status.RUNNING);
+        Lease lease = repository.claim(executionId, "workspace-a", "worker-a", NOW, TTL)
+                .orElseThrow();
+        Instant attemptedAt = NOW.plusSeconds(5);
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE FUNCTION reject_successful_execution_completion()
+                    RETURNS trigger AS $
+                    BEGIN
+                        IF NEW.status = 'SUCCEEDED' THEN
+                            RAISE EXCEPTION 'simulated completion persistence failure';
+                        END IF;
+                        RETURN NEW;
+                    END;
+                    $ LANGUAGE plpgsql
+                    """);
+            statement.execute("""
+                    CREATE TRIGGER reject_successful_execution_completion
+                    BEFORE UPDATE ON farabi_query_executions
+                    FOR EACH ROW EXECUTE FUNCTION reject_successful_execution_completion()
+                    """);
+        }
+
+        try {
+            assertThrows(IllegalStateException.class,
+                    () -> repository.complete(lease, Status.RUNNING, Status.SUCCEEDED, attemptedAt));
+
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement("""
+                         SELECT status, lease_owner, lease_fence, lease_expires_at, updated_at
+                         FROM farabi_query_executions WHERE id=?
+                         """)) {
+                statement.setObject(1, executionId);
+                try (var result = statement.executeQuery()) {
+                    assertTrue(result.next());
+                    assertEquals(Status.RUNNING.name(), result.getString("status"));
+                    assertEquals("worker-a", result.getString("lease_owner"));
+                    assertEquals(1L, result.getLong("lease_fence"));
+                    assertEquals(NOW.plus(TTL),
+                            result.getTimestamp("lease_expires_at").toInstant());
+                    assertEquals(NOW, result.getTimestamp("updated_at").toInstant());
+                }
+            }
+        } finally {
+            try (Connection connection = dataSource.getConnection();
+                 Statement statement = connection.createStatement()) {
+                statement.execute("DROP TRIGGER IF EXISTS reject_successful_execution_completion ON farabi_query_executions");
+                statement.execute("DROP FUNCTION IF EXISTS reject_successful_execution_completion()");
+            }
+        }
+
+        assertTrue(repository.complete(lease, Status.RUNNING, Status.SUCCEEDED, attemptedAt),
+                "the unchanged lease should remain usable after the transient DB failure");
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     SELECT status, lease_owner, lease_fence, lease_expires_at, updated_at
+                     FROM farabi_query_executions WHERE id=?
+                     """)) {
+            statement.setObject(1, executionId);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next());
+                assertEquals(Status.SUCCEEDED.name(), result.getString("status"));
+                assertNull(result.getString("lease_owner"));
+                assertEquals(1L, result.getLong("lease_fence"));
+                assertNull(result.getTimestamp("lease_expires_at"));
+                assertEquals(attemptedAt, result.getTimestamp("updated_at").toInstant());
+            }
+        }
+    }
+
+    @Test
     void claimIsWorkspaceScopedAndOnlyTargetsActiveExecutions() throws Exception {
         UUID executionId = insertExecution("workspace-a", Status.RUNNING);
 
