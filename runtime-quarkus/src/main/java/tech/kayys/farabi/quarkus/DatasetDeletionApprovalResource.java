@@ -51,7 +51,6 @@ public class DatasetDeletionApprovalResource {
         try{return store().approve(id,ws,actor,body.reason(),Instant.now(),maxAttempts);}
         catch(java.util.NoSuchElementException missing){throw new NotFoundException();}
         catch(SecurityException denied){throw new ForbiddenException(denied.getMessage());}
-        catch(JdbcDatasetDeletionApprovalStore.ApprovalExpiredException expired){throw new jakarta.ws.rs.WebApplicationException(expired.getMessage(),Response.Status.CONFLICT);}
         catch(IllegalStateException conflict){throw new jakarta.ws.rs.WebApplicationException(conflict.getMessage(),Response.Status.CONFLICT);}
     }
 
