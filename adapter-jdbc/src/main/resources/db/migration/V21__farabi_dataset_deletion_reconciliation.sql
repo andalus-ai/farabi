@@ -1,6 +1,7 @@
 CREATE TABLE farabi_dataset_deletion_reconciliation_reports (
     id UUID PRIMARY KEY,
     workspace_id VARCHAR(200) NOT NULL,
+    requested_by VARCHAR(300) NOT NULL CHECK (length(trim(requested_by)) > 0),
     inspected_at TIMESTAMPTZ NOT NULL,
     datasets_inspected INTEGER NOT NULL CHECK (datasets_inspected >= 0),
     deletion_jobs_inspected INTEGER NOT NULL CHECK (deletion_jobs_inspected >= 0),
