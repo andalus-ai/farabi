@@ -37,3 +37,18 @@ CREATE TABLE farabi_dataset_retention_audit (
 CREATE INDEX idx_farabi_retention_audit_workspace ON farabi_dataset_retention_audit(workspace_id,occurred_at DESC);
 CREATE FUNCTION farabi_reject_retention_audit_mutation() RETURNS trigger AS $$ BEGIN RAISE EXCEPTION 'dataset retention audit is append-only'; END; $$ LANGUAGE plpgsql;
 CREATE TRIGGER farabi_dataset_retention_audit_immutable BEFORE UPDATE OR DELETE ON farabi_dataset_retention_audit FOR EACH ROW EXECUTE FUNCTION farabi_reject_retention_audit_mutation();
+
+-- Enforce workspace consistency at the database boundary for lifecycle controls.
+ALTER TABLE farabi_datasets ADD CONSTRAINT uq_farabi_datasets_id_workspace UNIQUE (id, workspace_id);
+ALTER TABLE farabi_dataset_retention_exemptions
+    ADD CONSTRAINT fk_farabi_retention_exemption_dataset_workspace
+    FOREIGN KEY (dataset_id, workspace_id) REFERENCES farabi_datasets(id, workspace_id);
+ALTER TABLE farabi_dataset_retention_audit
+    ADD CONSTRAINT fk_farabi_retention_audit_dataset_workspace
+    FOREIGN KEY (dataset_id, workspace_id) REFERENCES farabi_datasets(id, workspace_id);
+ALTER TABLE farabi_dataset_legal_holds
+    ADD CONSTRAINT fk_farabi_legal_hold_dataset_workspace
+    FOREIGN KEY (dataset_id, workspace_id) REFERENCES farabi_datasets(id, workspace_id);
+ALTER TABLE farabi_dataset_legal_hold_audit
+    ADD CONSTRAINT fk_farabi_legal_hold_audit_dataset_workspace
+    FOREIGN KEY (dataset_id, workspace_id) REFERENCES farabi_datasets(id, workspace_id);
