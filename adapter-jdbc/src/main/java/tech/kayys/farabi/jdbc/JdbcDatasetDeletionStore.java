@@ -117,6 +117,76 @@ public final class JdbcDatasetDeletionStore implements Store {
         }catch(SQLException e){throw new IllegalStateException("fail dataset deletion failed",e);}
     }
 
+    /**
+     * Requeues an exhausted job only after a separately authorized operator action.
+     * The original approved job and approval are reused; no new destructive intent is created.
+     */
+    public Deletion recoverFailed(UUID jobId,String workspace,String actor,String reason,Instant now,int retryBudget){
+        if(workspace==null||workspace.isBlank()||actor==null||actor.isBlank())
+            throw new IllegalArgumentException("workspace and actor are required");
+        if(reason==null||reason.isBlank()||reason.length()>2000)
+            throw new IllegalArgumentException("recovery reason must contain 1..2000 characters");
+        if(retryBudget<1||retryBudget>20)throw new IllegalArgumentException("retry budget must be 1..20");
+        try(Connection c=source.getConnection()){
+            c.setAutoCommit(false);
+            try{
+                UUID dataset;
+                try(PreparedStatement p=c.prepareStatement("SELECT dataset_id FROM farabi_dataset_deletions WHERE id=? AND workspace_id=?")){
+                    p.setObject(1,jobId);p.setString(2,workspace);
+                    try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("deletion job not found");dataset=r.getObject(1,UUID.class);}
+                }
+                String lifecycle;
+                try(PreparedStatement p=c.prepareStatement("SELECT lifecycle,source_id,created_at FROM farabi_datasets WHERE id=? AND workspace_id=? FOR UPDATE")){
+                    p.setObject(1,dataset);p.setString(2,workspace);
+                    try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("dataset not found");lifecycle=r.getString(1);}
+                }
+                if(!"DELETE_PENDING".equals(lifecycle))throw new IllegalStateException("dataset is not pending deletion");
+                String approvalStatus;UUID approvedJob;
+                try(PreparedStatement p=c.prepareStatement("SELECT a.status,a.deletion_job_id FROM farabi_dataset_deletions d JOIN farabi_dataset_deletion_approvals a ON a.id=d.approval_id AND a.workspace_id=d.workspace_id WHERE d.id=? AND d.workspace_id=? FOR UPDATE OF d,a")){
+                    p.setObject(1,jobId);p.setString(2,workspace);
+                    try(ResultSet r=p.executeQuery()){if(!r.next())throw new IllegalStateException("deletion job has no maker-checker approval");approvalStatus=r.getString(1);approvedJob=r.getObject(2,UUID.class);}
+                }
+                if(!"APPROVED".equals(approvalStatus)||!jobId.equals(approvedJob))
+                    throw new IllegalStateException("deletion job is not backed by its exact approved request");
+                String status;
+                try(PreparedStatement p=c.prepareStatement("SELECT status FROM farabi_dataset_deletions WHERE id=? AND workspace_id=? FOR UPDATE")){
+                    p.setObject(1,jobId);p.setString(2,workspace);try(ResultSet r=p.executeQuery()){r.next();status=r.getString(1);}
+                }
+                if(!"FAILED".equals(status))throw new IllegalStateException("only FAILED deletion jobs can be recovered");
+                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_legal_holds WHERE dataset_id=? AND workspace_id=? AND released_at IS NULL LIMIT 1")){
+                    p.setObject(1,dataset);p.setString(2,workspace);try(ResultSet r=p.executeQuery()){if(r.next())throw new IllegalStateException("active legal hold blocks deletion recovery");}
+                }
+                String sourceId;Instant createdAt;
+                try(PreparedStatement p=c.prepareStatement("SELECT source_id,created_at FROM farabi_datasets WHERE id=? AND workspace_id=?")){
+                    p.setObject(1,dataset);p.setString(2,workspace);try(ResultSet r=p.executeQuery()){r.next();sourceId=r.getString(1);createdAt=r.getTimestamp(2).toInstant();}
+                }
+                boolean exempt;
+                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_retention_exemptions WHERE dataset_id=? AND workspace_id=? AND revoked_at IS NULL AND (expires_at IS NULL OR expires_at>?) LIMIT 1")){
+                    p.setObject(1,dataset);p.setString(2,workspace);p.setTimestamp(3,Timestamp.from(now));try(ResultSet r=p.executeQuery()){exempt=r.next();}
+                }
+                if(!exempt){
+                    Integer days=null;
+                    try(PreparedStatement p=c.prepareStatement("SELECT retention_days FROM farabi_dataset_retention_policies WHERE workspace_id=? AND (source_id=? OR source_id IS NULL) AND effective_at<=? ORDER BY CASE WHEN source_id=? THEN 0 ELSE 1 END,effective_at DESC,created_at DESC LIMIT 1")){
+                        p.setString(1,workspace);p.setString(2,sourceId);p.setTimestamp(3,Timestamp.from(now));p.setString(4,sourceId);
+                        try(ResultSet r=p.executeQuery()){if(r.next())days=r.getInt(1);}
+                    }
+                    if(days==null||createdAt.plus(java.time.Duration.ofDays(days)).isAfter(now))
+                        throw new IllegalStateException("current retention policy does not permit deletion recovery");
+                }
+                try(PreparedStatement p=c.prepareStatement("UPDATE farabi_dataset_deletions SET status='QUEUED',attempts=0,max_attempts=?,available_at=?,lease_owner=NULL,lease_token=NULL,lease_until=NULL,updated_at=? WHERE id=? AND workspace_id=? AND status='FAILED'")){
+                    p.setInt(1,retryBudget);p.setTimestamp(2,Timestamp.from(now));p.setTimestamp(3,Timestamp.from(now));p.setObject(4,jobId);p.setString(5,workspace);
+                    if(p.executeUpdate()!=1)throw new IllegalStateException("deletion job changed concurrently");
+                }
+                try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_deletion_execution_audit(id,job_id,workspace_id,dataset_id,event_type,attempt,actor_id,reason,occurred_at) VALUES(?,?,?,?,'RECOVERY_QUEUED',0,?,?,?)")){
+                    p.setObject(1,UUID.randomUUID());p.setObject(2,jobId);p.setString(3,workspace);p.setObject(4,dataset);p.setString(5,actor);p.setString(6,reason.trim());p.setTimestamp(7,Timestamp.from(now));p.executeUpdate();
+                }
+                c.commit();
+                return findById(jobId,workspace).orElseThrow();
+            }catch(Exception e){c.rollback();if(e instanceof RuntimeException re)throw re;throw new IllegalStateException("recover dataset deletion failed",e);}
+            finally{c.setAutoCommit(true);}
+        }catch(SQLException e){throw new IllegalStateException("recover dataset deletion failed",e);}
+    }
+
     private static int maxAttempts(Connection c,UUID id)throws SQLException{
         try(PreparedStatement p=c.prepareStatement("SELECT max_attempts FROM farabi_dataset_deletions WHERE id=?")){
             p.setObject(1,id);try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("deletion job not found");return r.getInt(1);}
