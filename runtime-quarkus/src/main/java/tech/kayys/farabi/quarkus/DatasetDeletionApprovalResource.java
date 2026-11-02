@@ -37,8 +37,11 @@ public class DatasetDeletionApprovalResource {
         String ws=workspace();String actor=subject();requestAuthorizer.authorize(actor,ws);
         if(body==null||body.datasetId()==null||body.reason()==null||body.reason().isBlank())
             throw new BadRequestException("datasetId and reason are required");
-        Approval result=store().request(body.datasetId(),ws,actor,body.reason(),Instant.now(),approvalLifetime);
-        return Response.status(Response.Status.CREATED).entity(result).build();
+        try {
+            Approval result=store().request(body.datasetId(),ws,actor,body.reason(),Instant.now(),approvalLifetime);
+            return Response.status(Response.Status.CREATED).entity(result).build();
+        } catch(java.util.NoSuchElementException missing) { throw new NotFoundException(); }
+          catch(IllegalStateException conflict) { throw new jakarta.ws.rs.WebApplicationException(conflict.getMessage(),Response.Status.CONFLICT); }
     }
 
     @POST @Path("/{approvalId}/approve")
@@ -47,6 +50,9 @@ public class DatasetDeletionApprovalResource {
         if(body==null||body.reason()==null||body.reason().isBlank())throw new BadRequestException("approval reason is required");
         try{return store().approve(id,ws,actor,body.reason(),Instant.now(),maxAttempts);}
         catch(java.util.NoSuchElementException missing){throw new NotFoundException();}
+        catch(SecurityException denied){throw new ForbiddenException(denied.getMessage());}
+        catch(JdbcDatasetDeletionApprovalStore.ApprovalExpiredException expired){throw new jakarta.ws.rs.WebApplicationException(expired.getMessage(),Response.Status.CONFLICT);}
+        catch(IllegalStateException conflict){throw new jakarta.ws.rs.WebApplicationException(conflict.getMessage(),Response.Status.CONFLICT);}
     }
 
     @POST @Path("/{approvalId}/reject")
@@ -55,6 +61,8 @@ public class DatasetDeletionApprovalResource {
         if(body==null||body.reason()==null||body.reason().isBlank())throw new BadRequestException("rejection reason is required");
         try{return store().reject(id,ws,actor,body.reason(),Instant.now());}
         catch(java.util.NoSuchElementException missing){throw new NotFoundException();}
+        catch(SecurityException denied){throw new ForbiddenException(denied.getMessage());}
+        catch(IllegalStateException conflict){throw new jakarta.ws.rs.WebApplicationException(conflict.getMessage(),Response.Status.CONFLICT);}
     }
 
     @GET
