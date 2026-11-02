@@ -47,7 +47,7 @@ class DatasetDeletionReconciliationServiceTest {
             public Optional<ObjectEntry> inspect(String ref,String workspace){return Optional.empty();}
             public List<ObjectEntry> list(String workspace){return List.of();}
         };
-        Report report=new DatasetDeletionReconciliationService(repository,inventory,Clock.fixed(now,ZoneOffset.UTC)).inspect("workspace-a");
+        Report report=new DatasetDeletionReconciliationService(repository,inventory,Clock.fixed(now,ZoneOffset.UTC)).inspect("workspace-a","operator-a");
         assertTrue(report.consistent());
         assertTrue(report.findings().isEmpty());
     }
