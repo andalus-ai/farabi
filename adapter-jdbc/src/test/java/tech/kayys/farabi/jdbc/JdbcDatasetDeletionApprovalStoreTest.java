@@ -43,6 +43,8 @@ class JdbcDatasetDeletionApprovalStoreTest {
         assertEquals("maker",approved.requesterId());
         assertEquals("checker",approved.approverId());
         assertNotNull(approved.deletionJobId());
+        assertEquals(2,store.audit(pending.id(),"ws").size());
+        assertTrue(store.audit(pending.id(),"other").isEmpty());
         try(Connection c=source.getConnection();Statement s=c.createStatement()){
             try(ResultSet r=s.executeQuery("SELECT status,approval_id FROM farabi_dataset_deletions")){
                 assertTrue(r.next());assertEquals("QUEUED",r.getString(1));assertEquals(pending.id(),r.getObject(2,UUID.class));
