@@ -370,6 +370,54 @@ class JdbcWorkerLeaseRepositoryTest {
         }
     }
 
+
+    @Test
+    void unavailableReconciliationReadLeavesCompletionOutcomeUnresolvedUntilRetry() throws Exception {
+        UUID executionId = insertExecution("workspace-a", Status.RUNNING);
+        Lease lease = repository.claim(executionId, "workspace-a", "worker-a", NOW, TTL)
+                .orElseThrow();
+        Instant completedAt = NOW.plusSeconds(5);
+        DataSource faultingDataSource =
+                dataSourceThatLosesCompletionAcknowledgementAndFirstReconciliationRead(dataSource);
+        JdbcWorkerLeaseRepository ambiguousRepository =
+                new JdbcWorkerLeaseRepository(faultingDataSource);
+
+        assertThrows(IllegalStateException.class,
+                () -> ambiguousRepository.complete(lease, Status.RUNNING,
+                        Status.SUCCEEDED, completedAt));
+
+        assertThrows(SQLException.class, () -> {
+            try (Connection connection = faultingDataSource.getConnection();
+                 var statement = connection.prepareStatement("""
+                         SELECT status, lease_owner, lease_fence, lease_expires_at, updated_at
+                         FROM farabi_query_executions WHERE id=?
+                         """)) {
+                statement.setObject(1, executionId);
+                statement.executeQuery();
+            }
+        }, "a failed reconciliation read must not be interpreted as success or failure");
+
+        try (Connection connection = faultingDataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     SELECT status, lease_owner, lease_fence, lease_expires_at, updated_at
+                     FROM farabi_query_executions WHERE id=?
+                     """)) {
+            statement.setObject(1, executionId);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next());
+                assertEquals(Status.SUCCEEDED.name(), result.getString("status"));
+                assertNull(result.getString("lease_owner"));
+                assertEquals(1L, result.getLong("lease_fence"));
+                assertNull(result.getTimestamp("lease_expires_at"));
+                assertEquals(completedAt, result.getTimestamp("updated_at").toInstant());
+            }
+        }
+
+        assertFalse(repository.complete(lease, Status.RUNNING, Status.SUCCEEDED,
+                        completedAt.plusSeconds(1)),
+                "only after reading the persisted terminal state can the old completion be treated as already committed");
+    }
+
     @Test
     void claimIsWorkspaceScopedAndOnlyTargetsActiveExecutions() throws Exception {
         UUID executionId = insertExecution("workspace-a", Status.RUNNING);
@@ -389,6 +437,62 @@ class JdbcWorkerLeaseRepositoryTest {
                 NOW.plusSeconds(60), TTL).isEmpty());
     }
 
+
+
+    private static DataSource dataSourceThatLosesCompletionAcknowledgementAndFirstReconciliationRead(
+            DataSource delegate) {
+        AtomicBoolean loseAcknowledgement = new AtomicBoolean(true);
+        AtomicBoolean loseFirstReconciliationRead = new AtomicBoolean(true);
+        return (DataSource) Proxy.newProxyInstance(
+                DataSource.class.getClassLoader(),
+                new Class<?>[] {DataSource.class},
+                (proxy, method, args) -> {
+                    Object value = invokeDelegate(delegate, method, args);
+                    if (!method.getName().equals("getConnection") || !(value instanceof Connection connection)) {
+                        return value;
+                    }
+                    return Proxy.newProxyInstance(
+                            Connection.class.getClassLoader(),
+                            new Class<?>[] {Connection.class},
+                            (connectionProxy, connectionMethod, connectionArgs) -> {
+                                Object statementValue =
+                                        invokeDelegate(connection, connectionMethod, connectionArgs);
+                                if (!connectionMethod.getName().equals("prepareStatement")
+                                        || connectionArgs == null
+                                        || connectionArgs.length == 0
+                                        || !(connectionArgs[0] instanceof String sql)
+                                        || !(statementValue instanceof PreparedStatement preparedStatement)) {
+                                    return statementValue;
+                                }
+                                boolean completion = sql.startsWith(
+                                        "UPDATE farabi_query_executions SET status=");
+                                boolean reconciliation = sql.startsWith("SELECT status, lease_owner, lease_fence");
+                                if (!completion && !reconciliation) {
+                                    return statementValue;
+                                }
+                                return Proxy.newProxyInstance(
+                                        PreparedStatement.class.getClassLoader(),
+                                        new Class<?>[] {PreparedStatement.class},
+                                        (statementProxy, statementMethod, statementArgs) -> {
+                                            Object result = invokeDelegate(
+                                                    preparedStatement, statementMethod, statementArgs);
+                                            if (completion
+                                                    && statementMethod.getName().equals("executeUpdate")
+                                                    && loseAcknowledgement.compareAndSet(true, false)) {
+                                                throw new SQLException(
+                                                        "simulated lost acknowledgement after auto-commit");
+                                            }
+                                            if (reconciliation
+                                                    && statementMethod.getName().equals("executeQuery")
+                                                    && loseFirstReconciliationRead.compareAndSet(true, false)) {
+                                                throw new SQLException(
+                                                        "simulated temporary reconciliation read failure");
+                                            }
+                                            return result;
+                                        });
+                            });
+                });
+    }
 
     private static DataSource dataSourceThatLosesCompletionAcknowledgement(DataSource delegate) {
         AtomicBoolean loseAcknowledgement = new AtomicBoolean(true);
