@@ -20,7 +20,9 @@ remain available for audit until object deletion succeeds.
 ## Storage boundaries
 
 The local object store only supports development/single-node local-file references. S3 deletion
-validates the bucket and workspace-hashed key prefix before issuing DeleteObject. Do not allow
+validates the bucket and workspace-hashed key prefix before issuing DeleteObject. Both providers
+must support an authoritative workspace-scoped existence check; inability to verify absence is a
+failure, not success. Do not allow
 clients to submit storage references: deletion requests must resolve a dataset ID inside the
 authenticated workspace.
 
@@ -91,11 +93,14 @@ Recorded events:
 - `RETRY_SCHEDULED`: object deletion failed and the job was returned to the queue.
 - `FAILED`: the configured attempt budget was exhausted after an object deletion failure.
 - `LEASE_EXHAUSTED`: a worker lease expired on the final allowed attempt.
-- `SUCCEEDED`: object deletion completed and dataset lifecycle/storage accounting were
-  committed.
+- `OBJECT_ABSENT_VERIFIED`: after the provider delete call, a workspace-scoped lookup
+  confirmed that the object no longer exists.
+- `SUCCEEDED`: the dataset lifecycle/storage accounting transaction committed after that
+  absence verification.
 
 The claim, retry/failure, lease-exhaustion, and success audit writes are transactionally
-coupled to their respective job transitions. A stale lease token cannot complete or fail a
+coupled to their respective job transitions. The absence-verification event is committed in
+the same transaction as archival and quota-ledger updates. A stale lease token cannot complete or fail a
 job and cannot write an event through those transitions. The audit records attempt, worker,
 lease token, error category, and timestamp; they intentionally do not persist exception
 messages or object-store credentials.
@@ -105,8 +110,14 @@ Read execution history with
 The endpoint is workspace-scoped and requires the storage operator authorization boundary.
 A job outside the caller's workspace returns an empty list, not another workspace's data.
 
-This audit trail makes job transitions reviewable. Operator-controlled recovery is documented
-below; provider-level post-delete reconciliation remains a follow-up control.
+The deletion worker now requires an explicit provider absence check before archival. The local
+adapter checks the workspace-scoped file path; the S3 adapter performs a post-delete HEAD lookup.
+If the object remains visible or the provider cannot confirm absence, the job is retried and the
+dataset remains unarchived with its quota usage retained. This closes the crash window where an
+object delete could succeed but database accounting could be committed prematurely.
+
+Operator-controlled recovery is documented below. Periodic cross-system reconciliation of
+archived datasets against provider inventory remains a separate follow-up.
 
 ## Maker-checker deletion approvals
 
