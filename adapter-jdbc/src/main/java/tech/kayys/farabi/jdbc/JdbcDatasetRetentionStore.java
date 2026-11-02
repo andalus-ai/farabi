@@ -46,6 +46,9 @@ public final class JdbcDatasetRetentionStore {
                 try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_datasets WHERE id=? AND workspace_id=? FOR UPDATE")){
                     p.setObject(1,dataset);p.setString(2,workspace);try(ResultSet r=p.executeQuery()){if(!r.next())throw new NoSuchElementException("dataset not found");}
                 }
+                try(PreparedStatement p=c.prepareStatement("SELECT 1 FROM farabi_dataset_deletions WHERE dataset_id=? AND workspace_id=? AND status='RUNNING' LIMIT 1")){
+                    p.setObject(1,dataset);p.setString(2,workspace);try(ResultSet r=p.executeQuery()){if(r.next())throw new IllegalStateException("deletion is already in progress; retention exemption cannot be applied safely");}
+                }
                 UUID id=UUID.randomUUID();
                 try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_retention_exemptions(id,workspace_id,dataset_id,reason,created_by,created_at,expires_at) VALUES(?,?,?,?,?,?,?)")){
                     p.setObject(1,id);p.setString(2,workspace);p.setObject(3,dataset);p.setString(4,reason);p.setString(5,actor);p.setTimestamp(6,Timestamp.from(now));p.setTimestamp(7,expiresAt==null?null:Timestamp.from(expiresAt));p.executeUpdate();
