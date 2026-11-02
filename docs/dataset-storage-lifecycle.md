@@ -144,6 +144,18 @@ the existing job is reused rather than duplicating the dataset's unique deletion
 job already RUNNING requires manual reconciliation because object deletion may have started.
 No automatic migration approves historical deletion work.
 
+## Operator-controlled deletion recovery
+
+A terminally failed deletion is never retried merely because a worker restarts. Migration V19 extends the immutable execution audit with `RECOVERY_QUEUED` events that record the operator, mandatory reason, and recovery sequence. Recovery reuses the original deletion job and its maker-checker approval; it does not create a new approval or a duplicate job.
+
+- `POST /api/dataset-deletion-approvals/jobs/{jobId}/recover` with `{"reason":"..."}` requests a recovery.
+- Recovery permission is separate from both request/approval permission and the general storage-operator permission. The default `DatasetDeletionRecoveryAuthorizer` denies all requests; deployments must provide explicit RBAC.
+- Only a `FAILED` job whose exact linked approval remains `APPROVED` can be recovered. The dataset must still be `DELETE_PENDING`.
+- The transaction locks the dataset and job, rechecks active legal holds and the current effective retention policy or active exemption, resets the attempt counter, and queues the same job with a bounded retry budget (1..20; API uses the configured deletion max attempts).
+- A reason is mandatory (1..2000 characters). The recovery event is committed atomically with the queue transition. Repeated recovery attempts against a queued/running/succeeded job return conflict; another recovery is possible only after a subsequent terminal failure.
+
+Recovery is an explicit operator action, not a relaxation of maker-checker approval or retention policy. The worker continues to enforce legal holds and retention at claim time. Execution audit history includes the recovery actor and reason.
+
 ## Operational follow-ups
 
 Retention-based automatic deletion and legal-hold policy administration remain separate follow-up
