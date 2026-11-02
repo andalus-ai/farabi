@@ -20,7 +20,7 @@ class JdbcDatasetDeletionApprovalStoreTest {
         try(Connection c=source.getConnection();Statement s=c.createStatement()){
             s.execute("CREATE TABLE farabi_datasets(id UUID PRIMARY KEY,workspace_id VARCHAR(200),location_ref VARCHAR(2048),source_id VARCHAR(200),created_at TIMESTAMP WITH TIME ZONE,lifecycle VARCHAR(40),deletion_requested_at TIMESTAMP WITH TIME ZONE,updated_at TIMESTAMP WITH TIME ZONE)");
             s.execute("CREATE TABLE farabi_dataset_deletion_approvals(id UUID PRIMARY KEY,workspace_id VARCHAR(200),dataset_id UUID,requester_id VARCHAR(300),request_reason TEXT,requested_at TIMESTAMP WITH TIME ZONE,expires_at TIMESTAMP WITH TIME ZONE,status VARCHAR(20),approver_id VARCHAR(300),decision_reason TEXT,decided_at TIMESTAMP WITH TIME ZONE,deletion_job_id UUID)");
-            s.execute("CREATE TABLE farabi_dataset_deletions(id UUID PRIMARY KEY,workspace_id VARCHAR(200),dataset_id UUID,location_ref VARCHAR(2048),status VARCHAR(20),attempts INTEGER,max_attempts INTEGER,available_at TIMESTAMP WITH TIME ZONE,created_at TIMESTAMP WITH TIME ZONE,updated_at TIMESTAMP WITH TIME ZONE,approval_id UUID)");
+            s.execute("CREATE TABLE farabi_dataset_deletions(id UUID PRIMARY KEY,workspace_id VARCHAR(200),dataset_id UUID UNIQUE,location_ref VARCHAR(2048),status VARCHAR(20),attempts INTEGER,max_attempts INTEGER,available_at TIMESTAMP WITH TIME ZONE,created_at TIMESTAMP WITH TIME ZONE,updated_at TIMESTAMP WITH TIME ZONE,approval_id UUID)");
             s.execute("CREATE TABLE farabi_dataset_legal_holds(id UUID PRIMARY KEY,workspace_id VARCHAR(200),dataset_id UUID,released_at TIMESTAMP WITH TIME ZONE)");
             s.execute("CREATE TABLE farabi_dataset_retention_exemptions(id UUID PRIMARY KEY,workspace_id VARCHAR(200),dataset_id UUID,revoked_at TIMESTAMP WITH TIME ZONE,expires_at TIMESTAMP WITH TIME ZONE)");
             s.execute("CREATE TABLE farabi_dataset_retention_policies(id UUID PRIMARY KEY,workspace_id VARCHAR(200),source_id VARCHAR(200),retention_days INTEGER,effective_at TIMESTAMP WITH TIME ZONE,created_at TIMESTAMP WITH TIME ZONE)");
@@ -65,6 +65,26 @@ class JdbcDatasetDeletionApprovalStoreTest {
         }
         assertThrows(IllegalStateException.class,()->store.approve(pending.id(),"ws","checker","reviewed",now.plusSeconds(1),4));
         assertEquals("PENDING",store.find(pending.id(),"ws").orElseThrow().status());
+    }
+
+    @Test void approvedRequestRebindsQueuedOrFailedLegacyJobInsteadOfDuplicatingIt() throws Exception {
+        UUID legacyJob=UUID.randomUUID();
+        try(Connection c=source.getConnection()){
+            try(PreparedStatement p=c.prepareStatement("UPDATE farabi_datasets SET lifecycle='DELETE_PENDING' WHERE id=?")){
+                p.setObject(1,dataset);p.executeUpdate();
+            }
+            try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_dataset_deletions(id,workspace_id,dataset_id,location_ref,status,attempts,max_attempts,available_at,created_at,updated_at) VALUES(?,?,?,'object://legacy','FAILED',3,4,?,?,?)")){
+                p.setObject(1,legacyJob);p.setString(2,"ws");p.setObject(3,dataset);p.setTimestamp(4,Timestamp.from(now));p.setTimestamp(5,Timestamp.from(now));p.setTimestamp(6,Timestamp.from(now));p.executeUpdate();
+            }
+        }
+        var pending=store.request(dataset,"ws","maker","review legacy deletion",now,Duration.ofHours(1));
+        var approved=store.approve(pending.id(),"ws","checker","re-authorized",now.plusSeconds(1),5);
+        assertEquals(legacyJob,approved.deletionJobId());
+        try(Connection c=source.getConnection();PreparedStatement p=c.prepareStatement("SELECT status,attempts,approval_id FROM farabi_dataset_deletions WHERE id=?")){
+            p.setObject(1,legacyJob);try(ResultSet r=p.executeQuery()){
+                assertTrue(r.next());assertEquals("QUEUED",r.getString(1));assertEquals(0,r.getInt(2));assertEquals(pending.id(),r.getObject(3,UUID.class));
+            }
+        }
     }
 
     @Test void approvalCannotBeUsedAcrossWorkspaceOrAfterExpiry() {
