@@ -39,7 +39,7 @@ class JdbcDatasetRetentionStoreTest {
     }
 
     @Test void createsAndRevokesWorkspaceScopedExemption() {
-        var exemption=store.createExemption(dataset,"ws","admin","regulatory exception",now.plusSeconds(86400),"2026-11-02T00:00:00Z".equals(now.toString())?now:now);
+        var exemption=store.createExemption(dataset,"ws","admin","regulatory exception",now.plusSeconds(86400),now);
         assertNull(exemption.revokedAt());
         var revoked=store.revokeExemption(exemption.id(),"ws","admin","exception ended",now.plusSeconds(60));
         assertEquals("admin",revoked.revokedBy());
