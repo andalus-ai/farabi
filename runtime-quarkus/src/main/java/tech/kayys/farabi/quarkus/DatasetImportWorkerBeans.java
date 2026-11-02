@@ -40,6 +40,8 @@ import tech.kayys.farabi.jdbc.JdbcDatasetStorageInventoryAuditLog;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageCleanupPreviewStore;
 import tech.kayys.farabi.engine.DatasetStorageCleanupPreviewService;
 import tech.kayys.farabi.engine.DatasetStorageQuotaRepairPreviewService;
+import tech.kayys.farabi.engine.DatasetStorageQuotaRepairApplicationService;
+import tech.kayys.farabi.jdbc.JdbcDatasetStorageQuotaRepairApplicationStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetStorageQuotaRepairPreviewStore;
 import tech.kayys.farabi.engine.DatasetStorageInventoryAuditPorts.AuditLog;
 import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.ObjectStore;
@@ -94,6 +96,13 @@ public class DatasetImportWorkerBeans {
             DatasetStorageReconciliationService reconciliation, JdbcDatasetStorageQuotaRepairPreviewStore plans,
             @ConfigProperty(name="farabi.storage.quota-repair-preview.lifetime", defaultValue="PT15M") Duration lifetime) {
         return new DatasetStorageQuotaRepairPreviewService(reconciliation, plans, Clock.systemUTC(), lifetime);
+    }
+    @Produces @Singleton JdbcDatasetStorageQuotaRepairApplicationStore storageQuotaRepairApplicationStore(DataSource source) {
+        return new JdbcDatasetStorageQuotaRepairApplicationStore(source);
+    }
+    @Produces @Singleton DatasetStorageQuotaRepairApplicationService storageQuotaRepairApplicationService(
+            DatasetStorageQuotaRepairPreviewService previews, JdbcDatasetStorageQuotaRepairApplicationStore applications) {
+        return new DatasetStorageQuotaRepairApplicationService(previews, applications, Clock.systemUTC());
     }
     @Produces @Singleton JdbcWorkspaceStorageStore workspaceStorage(DataSource source,
             @ConfigProperty(name="farabi.import.storage.default-quota-bytes", defaultValue="10737418240") long quotaBytes) {
