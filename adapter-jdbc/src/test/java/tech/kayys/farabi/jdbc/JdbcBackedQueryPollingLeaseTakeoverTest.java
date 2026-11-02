@@ -22,7 +22,7 @@ import org.testcontainers.containers.PostgreSQLContainer;
 import org.testcontainers.junit.jupiter.Container;
 import org.testcontainers.junit.jupiter.Testcontainers;
 import tech.kayys.farabi.engine.QueryContracts.*;
-import tech.kayys.farabi.engine.QueryLifecycle.Execution;
+import tech.kayys.farabi.engine.QueryLifecycle.*;
 import tech.kayys.farabi.engine.QueryPollingWorker;
 import tech.kayys.farabi.engine.QueryPorts;
 import tech.kayys.farabi.engine.WorkerCoordinator;
