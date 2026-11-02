@@ -41,7 +41,11 @@ public class StorageQuotaRepairPreviewResource {
     @POST @Path("/{planId}/apply")
     public Application apply(@PathParam("planId") UUID id) {
         String workspace=workspace(); authorize(workspace);
-        return applications.approveAndApply(id,workspace,identity.getPrincipal().getName());
+        try {
+            return applications.approveAndApply(id,workspace,identity.getPrincipal().getName());
+        } catch (java.util.NoSuchElementException missing) {
+            throw new NotFoundException();
+        }
     }
 
     @GET @Path("/{planId}")
