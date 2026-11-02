@@ -78,6 +78,7 @@ public final class JdbcDatasetDeletionStore implements Store {
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_dataset_deletions SET status='SUCCEEDED',lease_owner=NULL,lease_token=NULL,lease_until=NULL,updated_at=? WHERE id=?")){
                     p.setTimestamp(1,Timestamp.from(now));p.setObject(2,id);p.executeUpdate();
                 }
+                audit(c,id,workspace,dataset,"OBJECT_ABSENT_VERIFIED",attempt,null,token,null,now);
                 audit(c,id,workspace,dataset,"SUCCEEDED",attempt,null,token,null,now);
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_datasets SET lifecycle='ARCHIVED',deleted_at=?,updated_at=? WHERE id=? AND workspace_id=?")){
                     p.setTimestamp(1,Timestamp.from(now));p.setTimestamp(2,Timestamp.from(now));p.setObject(3,dataset);p.setString(4,workspace);p.executeUpdate();
