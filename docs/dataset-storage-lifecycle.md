@@ -175,7 +175,7 @@ Findings include:
 - `LEDGER_USED_MISMATCH`: workspace used bytes differ from the sum of non-archived dataset bytes.
 - `LEDGER_RESERVED_MISMATCH`: workspace reserved bytes differ from active RESERVED rows.
 
-Reports and findings are append-only. Provider lookups are workspace-fenced. A provider lookup
+Reports and findings are append-only and each report records the authenticated operator who requested it. Provider lookups are workspace-fenced. A provider lookup
 failure aborts report creation rather than being interpreted as absence. The synchronous snapshot
 is bounded to 5,000 datasets and 5,000 deletion jobs per workspace; larger workspaces require a
 future partitioned/queued reconciliation runner. The report is a
