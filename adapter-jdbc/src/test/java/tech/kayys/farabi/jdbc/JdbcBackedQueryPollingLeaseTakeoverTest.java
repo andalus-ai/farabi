@@ -64,6 +64,15 @@ class JdbcBackedQueryPollingLeaseTakeoverTest {
 
     @Test
     void staleRunningProviderResponseCannotRenewLeaseAfterJdbcTakeover() throws Exception {
+        assertStaleProviderResponseRejected(Status.RUNNING);
+    }
+
+    @Test
+    void staleFailedProviderResponseCannotOverwriteSuccessAfterJdbcTakeover() throws Exception {
+        assertStaleProviderResponseRejected(Status.FAILED);
+    }
+
+    private void assertStaleProviderResponseRejected(Status staleObservation) throws Exception {
         Instant start = Instant.parse("2026-11-01T00:00:00Z");
         Duration ttl = Duration.ofSeconds(30);
         UUID id = UUID.randomUUID();
@@ -86,7 +95,7 @@ class JdbcBackedQueryPollingLeaseTakeoverTest {
                         Thread.currentThread().interrupt();
                         throw new IllegalStateException(e);
                     }
-                    return new RemoteState(Status.RUNNING, null);
+                    return new RemoteState(staleObservation, null);
                 }
                 return new RemoteState(Status.SUCCEEDED, null);
             }
@@ -146,7 +155,7 @@ class JdbcBackedQueryPollingLeaseTakeoverTest {
 
             releaseFirstCall.countDown();
             assertFalse(staleWorker.get(10, TimeUnit.SECONDS),
-                    "stale RUNNING response must fail to renew the replaced lease");
+                    "stale provider response must not change the replacement worker result");
             assertEquals(Status.SUCCEEDED, readStatus(id));
             assertEquals(2L, readFence(id));
             assertNull(readLeaseOwner(id), "terminal completion releases the replacement lease");
