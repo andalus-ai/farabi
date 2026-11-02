@@ -15,6 +15,8 @@ public final class JdbcDatasetDeletionReconciliationStore implements Repository 
     @Override public Snapshot snapshot(String workspace){
         if(workspace==null||workspace.isBlank())throw new IllegalArgumentException("workspace required");
         try(Connection c=source.getConnection()){
+            c.setAutoCommit(false);
+            c.setTransactionIsolation(Connection.TRANSACTION_REPEATABLE_READ);
             List<DatasetState> datasets=new ArrayList<>();
             try(PreparedStatement p=c.prepareStatement("SELECT id,location_ref,lifecycle,storage_bytes FROM farabi_datasets WHERE workspace_id=? ORDER BY id")){
                 p.setString(1,workspace);try(ResultSet r=p.executeQuery()){while(r.next()){if(datasets.size()==5000)throw new IllegalStateException("workspace exceeds 5000 datasets; use a partitioned reconciliation run");datasets.add(new DatasetState(r.getObject(1,UUID.class),r.getString(2),r.getString(3),r.getLong(4)));}}
@@ -31,7 +33,9 @@ public final class JdbcDatasetDeletionReconciliationStore implements Repository 
             try(PreparedStatement p=c.prepareStatement("SELECT COALESCE((SELECT SUM(storage_bytes) FROM farabi_datasets WHERE workspace_id=? AND lifecycle<>'ARCHIVED'),0),COALESCE((SELECT SUM(reserved_bytes) FROM farabi_storage_reservations WHERE workspace_id=? AND status='RESERVED'),0)")){
                 p.setString(1,workspace);p.setString(2,workspace);try(ResultSet r=p.executeQuery()){r.next();expectedUsed=r.getLong(1);expectedReserved=r.getLong(2);}
             }
-            return new Snapshot(datasets,deletions,ledgerUsed,ledgerReserved,expectedUsed,expectedReserved);
+            Snapshot snapshot=new Snapshot(datasets,deletions,ledgerUsed,ledgerReserved,expectedUsed,expectedReserved);
+            c.commit();
+            return snapshot;
         }catch(SQLException e){throw new IllegalStateException("read deletion reconciliation snapshot failed",e);}
     }
 
