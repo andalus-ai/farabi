@@ -14,6 +14,7 @@ import javax.sql.DataSource;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
 import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
 import tech.kayys.farabi.engine.DatasetDeletionApprovalAuthorizer;
+import tech.kayys.farabi.engine.DatasetDeletionRecoveryAuthorizer;
 import tech.kayys.farabi.jdbc.JdbcDatasetDeletionApprovalStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetDeletionStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetDeletionApprovalStore.Approval;
@@ -28,6 +29,7 @@ public class DatasetDeletionApprovalResource {
     @Inject DataSource dataSource;
     @Inject DatasetStorageOperatorAuthorizer requestAuthorizer;
     @Inject DatasetDeletionApprovalAuthorizer approvalAuthorizer;
+    @Inject DatasetDeletionRecoveryAuthorizer recoveryAuthorizer;
     @ConfigProperty(name="farabi.dataset.deletion.approval-lifetime",defaultValue="PT24H")
     Duration approvalLifetime;
     @ConfigProperty(name="farabi.dataset.deletion.max-attempts",defaultValue="5")
@@ -65,6 +67,20 @@ public class DatasetDeletionApprovalResource {
         catch(IllegalStateException conflict){throw new jakarta.ws.rs.WebApplicationException(conflict.getMessage(),Response.Status.CONFLICT);}
     }
 
+    @POST @Path("/jobs/{jobId}/recover")
+    public Response recover(@PathParam("jobId") UUID jobId,RecoveryBody body) {
+        String ws=workspace();String actor=subject();recoveryAuthorizer.authorizeRecovery(actor,ws);
+        if(body==null||body.reason()==null||body.reason().isBlank())
+            throw new BadRequestException("recovery reason is required");
+        try {
+            var recovered=new JdbcDatasetDeletionStore(dataSource)
+                    .recoverFailed(jobId,ws,actor,body.reason(),Instant.now(),maxAttempts);
+            return Response.accepted(recovered).build();
+        } catch(java.util.NoSuchElementException missing) { throw new NotFoundException(); }
+          catch(IllegalArgumentException invalid) { throw new BadRequestException(invalid.getMessage()); }
+          catch(IllegalStateException conflict) { throw new jakarta.ws.rs.WebApplicationException(conflict.getMessage(),Response.Status.CONFLICT); }
+    }
+
     @GET
     public List<Approval> recent(@QueryParam("limit") Integer limit) {
         String ws=workspace();requestAuthorizer.authorize(subject(),ws);
@@ -96,4 +112,5 @@ public class DatasetDeletionApprovalResource {
     private String subject(){String s=identity.getPrincipal()==null?null:identity.getPrincipal().getName();if(s==null||s.isBlank())throw new ForbiddenException("authenticated subject is required");return s;}
     public record RequestBody(UUID datasetId,String reason) {}
     public record DecisionBody(String reason) {}
+    public record RecoveryBody(String reason) {}
 }
