@@ -15,6 +15,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import tech.kayys.farabi.engine.DatasetStorageOperatorAuthorizer;
 import tech.kayys.farabi.engine.DatasetDeletionApprovalAuthorizer;
 import tech.kayys.farabi.jdbc.JdbcDatasetDeletionApprovalStore;
+import tech.kayys.farabi.jdbc.JdbcDatasetDeletionStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetDeletionApprovalStore.Approval;
 
 /** Workspace-scoped maker-checker API for dataset deletion. */
@@ -75,6 +76,13 @@ public class DatasetDeletionApprovalResource {
         String ws=workspace();requestAuthorizer.authorize(subject(),ws);
         if(store().find(id,ws).isEmpty())throw new NotFoundException();
         return store().audit(id,ws);
+    }
+
+    @GET @Path("/jobs/{jobId}/audit")
+    public List<JdbcDatasetDeletionStore.ExecutionAudit> executionAudit(
+            @PathParam("jobId") UUID jobId,@QueryParam("limit") Integer limit) {
+        String ws=workspace();requestAuthorizer.authorize(subject(),ws);
+        return new JdbcDatasetDeletionStore(dataSource).audit(jobId,ws,limit==null?50:limit);
     }
 
     @GET @Path("/{approvalId}")
