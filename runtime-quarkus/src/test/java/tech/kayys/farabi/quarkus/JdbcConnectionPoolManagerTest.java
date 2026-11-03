@@ -68,6 +68,25 @@ class JdbcConnectionPoolManagerTest {
     }
 
     @Test
+    void rejectsAggregatePoolCapacityAboveRuntimeLimit() {
+        Map<String, JdbcConnectionPoolManager.SourceDefinition> definitions = new java.util.LinkedHashMap<>();
+        for (int i = 0; i < 21; i++) {
+            definitions.put("warehouse-" + i, new JdbcConnectionPoolManager.SourceDefinition(
+                    "Warehouse " + i, "jdbc:postgresql://db.example.test:5432/warehouse",
+                    "reader", "vault://warehouse/" + i, true, true, 10, 0, 5_000));
+        }
+        assertThrows(IllegalArgumentException.class, () -> new JdbcConnectionPoolManager(
+                definitions, Set.of("db.example.test"), reference -> "secret"));
+    }
+
+    @Test
+    void rejectsDriverSocketOverridesInJdbcUrl() {
+        assertThrows(IllegalArgumentException.class, () -> new JdbcConnectionPoolManager(
+                Map.of("warehouse", source("jdbc:postgresql://db.example.test:5432/warehouse?socketFactory=custom.Driver", true, true)),
+                Set.of("db.example.test"), reference -> "secret"));
+    }
+
+    @Test
     void requiresSecretResolverWhenSourcesAreConfigured() {
         assertThrows(IllegalStateException.class, () -> new JdbcConnectionPoolManager(
                 Map.of("warehouse", source("jdbc:postgresql://db.example.test:5432/warehouse", true, true)),
