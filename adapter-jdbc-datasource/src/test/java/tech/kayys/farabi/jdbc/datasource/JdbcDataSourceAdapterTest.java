@@ -2,7 +2,6 @@ package tech.kayys.farabi.jdbc.datasource;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import java.sql.DriverManager;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import org.h2.jdbcx.JdbcDataSource;
