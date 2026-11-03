@@ -41,6 +41,8 @@ decisions and not proof that an operation is safe.
 - `JdbcCatalogProvider`: JDBC DatabaseMetaData-based table and column discovery.
 - `JdbcCapabilitiesProvider`: reports database/driver versions, identifier quoting,
   transaction support and metadata limits from the live JDBC driver.
+- `JdbcSourceRuntime` (Quarkus): exposes the registry, catalog, capability and query ports
+  through CDI while owning pool shutdown.
 - `JdbcQueryExecutor`: prepared-statement execution, bind parameters, query timeout and
   row cap with a truncation indicator.
 
@@ -67,11 +69,52 @@ add database-side statement/resource limits and cancellation integration. JDBC d
 behavior differs; validate timeout, cancellation, type mapping and metadata semantics for
 each supported database/version.
 
+## Runtime-managed connection lifecycle (initial slice)
+
+Quarkus runtime configuration supports named entries under `farabi.sources.jdbc.<source-id>`.
+Each entry requires a display name, JDBC URL, username and opaque password secret reference.
+Resolved passwords are obtained through the runtime `SecretResolver` port; inline passwords
+are not part of the source configuration contract. A deployment must install exactly one
+secret resolver when at least one customer source is configured. With no configured sources,
+the registry is empty and no resolver is required.
+
+The runtime creates HikariCP pools, owns their lifecycle, and closes them at shutdown. Pool
+size is bounded (1–50), connection timeout is bounded, and source IDs are validated before
+being used in pool names. The initial runtime supports PostgreSQL and MySQL JDBC URL schemes.
+Every source must require TLS: PostgreSQL uses `sslmode=verify-full`; MySQL uses
+`sslMode=VERIFY_IDENTITY`. TLS cannot be disabled in this runtime slice.
+
+Outbound hosts must be exact-match allowlisted using `farabi.sources.allowed-hosts`.
+The URL cannot embed user-info. This is an application-level SSRF guard, not a replacement
+for network egress controls: deployments must also restrict outbound routes and DNS/network
+resolution. Never allowlist broad wildcards or public internet ranges.
+
+Example configuration (secret reference only; no secret value):
+
+```properties
+farabi.sources.allowed-hosts=warehouse.internal,reporting.internal
+farabi.sources.jdbc.warehouse.display-name=Warehouse
+farabi.sources.jdbc.warehouse.url=${FARABI_WAREHOUSE_JDBC_URL}
+farabi.sources.jdbc.warehouse.username=${FARABI_WAREHOUSE_DB_USER}
+farabi.sources.jdbc.warehouse.password-secret-ref=${FARABI_WAREHOUSE_PASSWORD_SECRET_REF}
+farabi.sources.jdbc.warehouse.read-only=true
+farabi.sources.jdbc.warehouse.tls-required=true
+farabi.sources.jdbc.warehouse.maximum-pool-size=10
+farabi.sources.jdbc.warehouse.minimum-idle=0
+farabi.sources.jdbc.warehouse.connection-timeout-ms=30000
+```
+
+The secret resolver is an integration port, not a built-in Vault/KMS implementation. Secret
+rotation currently requires runtime pool recreation/restart; hot rotation and pool draining
+are a later increment. TLS trust roots/client certificates are deployment/driver configuration
+and require environment-specific validation.
+
 ## Current limitations
 
 - No public connection CRUD API or persisted connection registry yet.
-- Pool provisioning, secret references, credential rotation, TLS policy and network policy
-  are runtime responsibilities and still need an explicit management design.
+- Connection pools, opaque secret references, TLS enforcement and exact-host allowlisting
+  are now wired in Quarkus. A concrete secret-manager plugin, hot credential rotation,
+  pool draining, TLS trust-root management and deployment egress policies remain outstanding.
 - The capability snapshot is not yet a complete dialect SPI: Farabi does not yet provide
   portable pagination, type normalization, cancellation or SQL-generation strategies.
 - The existing Dremio query lifecycle adapter has not yet been adapted to the new source
