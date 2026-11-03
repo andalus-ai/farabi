@@ -40,7 +40,7 @@ public final class DataSourceContracts {
         public QueryRequest {
             QueryContracts.required(sourceId, "sourceId");
             QueryContracts.required(sql, "sql");
-            parameters = List.copyOf(Objects.requireNonNull(parameters, "parameters"));
+            parameters = java.util.Collections.unmodifiableList(new java.util.ArrayList<>(Objects.requireNonNull(parameters, "parameters")));
             if (maxRows < 1 || maxRows > 100_000) {
                 throw new IllegalArgumentException("maxRows must be between 1 and 100000");
             }
@@ -51,7 +51,7 @@ public final class DataSourceContracts {
             List<String> columns, List<Map<String, Object>> rows, boolean truncated) {
         public QueryResult {
             columns = List.copyOf(Objects.requireNonNull(columns, "columns"));
-            rows = rows.stream().map(Map::copyOf).toList();
+            rows = rows.stream().map(row -> java.util.Collections.unmodifiableMap(new java.util.LinkedHashMap<>(row))).toList();
         }
     }
 }
