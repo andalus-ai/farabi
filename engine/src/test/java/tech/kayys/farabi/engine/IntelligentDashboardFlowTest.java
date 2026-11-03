@@ -46,6 +46,12 @@ class IntelligentDashboardFlowTest {
     private final DynamicDashboardService.DraftRepository draftRepo = new DynamicDashboardService.DraftRepository() {
         public void save(DynamicDraft d) { draftStore.put(d.id(), d); }
         public Optional<DynamicDraft> find(UUID id, String ws) { return Optional.ofNullable(draftStore.get(id)).filter(d -> d.workspaceId().equals(ws)); }
+        public boolean markPromoted(UUID id, String ws) {
+            return draftStore.containsKey(id) && draftStore.get(id).workspaceId().equals(ws) && promoted.add(id);
+        }
+        public void reopen(UUID id, String ws) {
+            if (draftStore.containsKey(id) && draftStore.get(id).workspaceId().equals(ws)) promoted.remove(id);
+        }
     };
 
     private DynamicDashboardService build(Proposer proposer) {
@@ -110,7 +116,7 @@ class IntelligentDashboardFlowTest {
             new Binding("orders", null, "order_count", null), List.of());
         var replacementSpec = new DashboardSpec("Replacement",
             List.of(replacementChart), List.of(new Placement("kpi_revenue", 0, 0, 6, 3)));
-        var substituted = new DynamicDraft(reviewed.id(), reviewed.workspaceId(), reviewed.ownerId(),
+        var substituted = new DynamicDraft(reviewed.id(), reviewed.lineageId(), reviewed.workspaceId(), reviewed.ownerId(),
             reviewed.prompt(), replacementSpec, reviewed.assumptions(), reviewed.proposer(),
             reviewed.parentManifestId(), reviewed.createdAt(), reviewed.expiresAt());
         draftStore.put(reviewed.id(), substituted);
