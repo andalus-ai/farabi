@@ -29,6 +29,10 @@ public final class JdbcConnectionPoolManager implements AutoCloseable {
             SecretResolver secrets) {
         Objects.requireNonNull(definitions, "definitions");
         Objects.requireNonNull(allowedHosts, "allowedHosts");
+        if (definitions.size() > 32
+                || definitions.values().stream().mapToInt(SourceDefinition::maximumPoolSize).sum() > 200) {
+            throw new IllegalArgumentException("JDBC source limits exceeded (32 sources / 200 pooled connections)");
+        }
         if (!definitions.isEmpty() && secrets == null) {
             throw new IllegalStateException("a SecretResolver is required when JDBC sources are configured");
         }
@@ -132,7 +136,10 @@ public final class JdbcConnectionPoolManager implements AutoCloseable {
         for (String pair : query.split("&")) {
             String key = pair.split("=", 2)[0].toLowerCase(Locale.ROOT);
             if (key.equals("user") || key.equals("username") || key.equals("password")
-                    || key.equals("sslmode") || key.equals("ssl_mode")) return true;
+                    || key.equals("sslmode") || key.equals("ssl_mode") || key.equals("usessl")
+                    || key.equals("requiressl") || key.equals("verifyservercertificate")
+                    || key.equals("socketfactory") || key.equals("socketfactoryarg")
+                    || key.equals("socket") || key.equals("localsocketaddress")) return true;
         }
         return false;
     }
