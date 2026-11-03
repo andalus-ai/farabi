@@ -18,16 +18,19 @@ management product.
 ## Engine contracts
 
 `DataSourceContracts` defines source descriptors, catalog objects, column metadata,
-bounded query requests and typed tabular results.
+bounded query requests and typed tabular results. `DataSourceCapabilities` is an immutable,
+provider-neutral snapshot of useful source/driver facts; it contains no JDBC classes.
 
-`DataSourcePorts` defines three replaceable ports:
+`DataSourcePorts` defines replaceable ports:
 
 - `Registry`: discover configured source descriptors.
 - `CatalogProvider`: enumerate tables/views and their columns.
+- `CapabilitiesProvider`: report capabilities of a connected source.
 - `QueryExecutor`: execute a bounded, parameterized query against a source.
 
 A runtime may compose different implementations behind these ports. The engine does not
-create connections or store credentials.
+create connections or store credentials. Capabilities are advisory metadata, not policy
+decisions and not proof that an operation is safe.
 
 ## JDBC adapter
 
@@ -36,6 +39,8 @@ create connections or store credentials.
 - `JdbcDataSourceRegistry`: immutable mapping from Farabi source IDs to application-managed
   `javax.sql.DataSource` pools.
 - `JdbcCatalogProvider`: JDBC DatabaseMetaData-based table and column discovery.
+- `JdbcCapabilitiesProvider`: reports database/driver versions, identifier quoting,
+  transaction support and metadata limits from the live JDBC driver.
 - `JdbcQueryExecutor`: prepared-statement execution, bind parameters, query timeout and
   row cap with a truncation indicator.
 
@@ -67,37 +72,41 @@ each supported database/version.
 - No public connection CRUD API or persisted connection registry yet.
 - Pool provisioning, secret references, credential rotation, TLS policy and network policy
   are runtime responsibilities and still need an explicit management design.
-- No dialect SPI yet. JDBC metadata and SQL behavior vary by vendor.
-- The existing Dremio query lifecycle adapter has not yet been adapted to the new catalog
-  SPI; Dremio remains independently wired through the existing query ports.
+- The capability snapshot is not yet a complete dialect SPI: Farabi does not yet provide
+  portable pagination, type normalization, cancellation or SQL-generation strategies.
+- The existing Dremio query lifecycle adapter has not yet been adapted to the new source
+  catalog/capability SPI; Dremio remains independently wired through the existing query ports.
 - No cross-source joins or distributed federation are implemented. Use Dremio/Toba or Trino
   for federation rather than adding a federation engine to Farabi.
 - The JDBC query port returns synchronous tabular results. It is not yet wired into the
   existing durable asynchronous query-job lifecycle.
-- Driver compatibility should be proven with integration tests for PostgreSQL, MySQL/MariaDB,
-  SQL Server and Oracle before claiming support. The initial test uses H2 only.
+- PostgreSQL and MySQL compatibility tests are present using Testcontainers, but the full
+  driver matrix (MariaDB, SQL Server, Oracle and other targets) is not established.
 
 ## Verification
 
-The adapter module includes H2 tests for metadata discovery, parameter binding, row limiting,
-unknown source rejection and read-only registration enforcement. Run:
+The adapter module includes H2 unit tests for metadata discovery, parameter binding, row
+limiting, unknown source rejection, read-only registration enforcement and capability
+discovery. PostgreSQL 16 and MySQL 8.4 integration tests run with Testcontainers and are
+automatically skipped when Docker is unavailable.
+
+Run:
 
 ```bash
 mvn -pl adapter-jdbc-datasource -am test
-mvn test
+mvn verify
 ```
 
-The test suite has not been executed as part of authoring this change; CI/build evidence must
-be recorded separately.
+These checks have not yet been executed in this authoring session; build/CI evidence must be
+recorded separately.
 
 ## Next increments
 
-1. Introduce a dialect/capability SPI for identifier quoting, pagination, type mapping and
-   cancellation semantics.
-2. Add PostgreSQL and MySQL Testcontainers integration tests and publish a supported-driver
-   matrix.
-3. Add runtime-managed connection definitions with secret references, TLS and pool limits.
-4. Adapt Dremio and later Trino catalog/query capabilities to the same source contracts where
-   semantics genuinely align.
-5. Add durable query-job integration for synchronous JDBC execution without weakening
+1. Complete dialect behavior (identifier quoting, pagination, type normalization and
+   cancellation) only where real providers need a common abstraction.
+2. Add runtime-managed connection definitions with secret references, TLS and pool limits.
+3. Adapt Dremio catalog and execution capabilities to the common source contracts without
+   replacing its durable asynchronous job lifecycle.
+4. Add durable query-job integration for synchronous JDBC execution without weakening
    deadlines, cancellation, audit or workspace authorization.
+5. Publish a tested driver/version compatibility matrix.
