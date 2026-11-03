@@ -36,25 +36,25 @@ public final class JdbcQueryExecutor implements QueryExecutor {
             // A connection-level read-only hint complements, but never replaces, read-only DB credentials.
             connection.setReadOnly(true);
             try (PreparedStatement statement = connection.prepareStatement(request.sql())) {
-            statement.setMaxRows(request.maxRows() + 1);
-            statement.setQueryTimeout(60);
-            for (int i = 0; i < request.parameters().size(); i++) {
-                statement.setObject(i + 1, request.parameters().get(i));
-            }
-            try (ResultSet rs = statement.executeQuery()) {
-                ResultSetMetaData metadata = rs.getMetaData();
-                List<String> columns = new ArrayList<>();
-                for (int i = 1; i <= metadata.getColumnCount(); i++) columns.add(metadata.getColumnLabel(i));
-                List<Map<String, Object>> rows = new ArrayList<>();
-                while (rs.next() && rows.size() <= request.maxRows()) {
-                    Map<String, Object> row = new LinkedHashMap<>();
-                    for (int i = 1; i <= columns.size(); i++) row.put(columns.get(i - 1), rs.getObject(i));
-                    rows.add(java.util.Collections.unmodifiableMap(row));
+                statement.setMaxRows(request.maxRows() + 1);
+                statement.setQueryTimeout(60);
+                for (int i = 0; i < request.parameters().size(); i++) {
+                    statement.setObject(i + 1, request.parameters().get(i));
                 }
-                boolean truncated = rows.size() > request.maxRows();
-                if (truncated) rows.remove(rows.size() - 1);
-                return new QueryResult(columns, rows, truncated);
-            }
+                try (ResultSet rs = statement.executeQuery()) {
+                    ResultSetMetaData metadata = rs.getMetaData();
+                    List<String> columns = new ArrayList<>();
+                    for (int i = 1; i <= metadata.getColumnCount(); i++) columns.add(metadata.getColumnLabel(i));
+                    List<Map<String, Object>> rows = new ArrayList<>();
+                    while (rs.next() && rows.size() <= request.maxRows()) {
+                        Map<String, Object> row = new LinkedHashMap<>();
+                        for (int i = 1; i <= columns.size(); i++) row.put(columns.get(i - 1), rs.getObject(i));
+                        rows.add(java.util.Collections.unmodifiableMap(row));
+                    }
+                    boolean truncated = rows.size() > request.maxRows();
+                    if (truncated) rows.remove(rows.size() - 1);
+                    return new QueryResult(columns, rows, truncated);
+                }
             }
         } catch (SQLException e) {
             throw new IllegalStateException("JDBC query execution failed for source " + request.sourceId(), e);
