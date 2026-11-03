@@ -79,13 +79,14 @@ secret resolver when at least one customer source is configured. With no configu
 the registry is empty and no resolver is required.
 
 The runtime creates HikariCP pools, owns their lifecycle, and closes them at shutdown. Pool
-size is bounded (1–50), connection timeout is bounded, and source IDs are validated before
-being used in pool names. The initial runtime supports PostgreSQL and MySQL JDBC URL schemes.
+size is bounded (1–50 per source), total configured pool capacity is capped at 200
+connections across at most 32 sources, connection timeout is bounded, and source IDs are
+validated before being used in pool names. The initial runtime supports PostgreSQL and MySQL JDBC URL schemes.
 Every source must require TLS: PostgreSQL uses `sslmode=verify-full`; MySQL uses
 `sslMode=VERIFY_IDENTITY`. TLS cannot be disabled in this runtime slice.
 
 Outbound hosts must be exact-match allowlisted using `farabi.sources.allowed-hosts`.
-The URL cannot embed user-info. This is an application-level SSRF guard, not a replacement
+The URL cannot embed user-info or override TLS, credentials, or driver socket routing. This is an application-level SSRF guard, not a replacement
 for network egress controls: deployments must also restrict outbound routes and DNS/network
 resolution. Never allowlist broad wildcards or public internet ranges.
 
