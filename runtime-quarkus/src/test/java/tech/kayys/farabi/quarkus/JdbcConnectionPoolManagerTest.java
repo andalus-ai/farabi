@@ -54,6 +54,20 @@ class JdbcConnectionPoolManagerTest {
     }
 
     @Test
+    void rejectsWritableAnalyticalSources() {
+        assertThrows(IllegalArgumentException.class, () -> new JdbcConnectionPoolManager(
+                Map.of("warehouse", source("jdbc:postgresql://db.example.test:5432/warehouse", false, true)),
+                Set.of("db.example.test"), reference -> "secret"));
+    }
+
+    @Test
+    void rejectsTlsOverridesEmbeddedInJdbcUrl() {
+        assertThrows(IllegalArgumentException.class, () -> new JdbcConnectionPoolManager(
+                Map.of("warehouse", source("jdbc:postgresql://db.example.test:5432/warehouse?sslmode=disable", true, true)),
+                Set.of("db.example.test"), reference -> "secret"));
+    }
+
+    @Test
     void requiresSecretResolverWhenSourcesAreConfigured() {
         assertThrows(IllegalStateException.class, () -> new JdbcConnectionPoolManager(
                 Map.of("warehouse", source("jdbc:postgresql://db.example.test:5432/warehouse", true, true)),
