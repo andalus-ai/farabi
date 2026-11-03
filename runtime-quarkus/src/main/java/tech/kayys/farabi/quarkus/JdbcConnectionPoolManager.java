@@ -9,7 +9,6 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 import java.util.TreeSet;
-import javax.sql.DataSource;
 import tech.kayys.farabi.engine.DataSourceContracts.DataSourceDescriptor;
 import tech.kayys.farabi.engine.DataSourceContracts.ProviderKind;
 import tech.kayys.farabi.jdbc.datasource.JdbcDataSourceRegistry;
@@ -114,7 +113,8 @@ public final class JdbcConnectionPoolManager implements AutoCloseable {
         try {
             URI uri = URI.create(jdbcUrl.substring("jdbc:".length()));
             String host = uri.getHost();
-            if (host == null || uri.getUserInfo() != null || !allowedHosts.contains(host)) {
+            if (host == null || uri.getUserInfo() != null || !allowedHosts.contains(host)
+                    || hasCredentialOrTlsOverride(uri.getRawQuery())) {
                 throw new IllegalArgumentException("JDBC URL host must be explicitly allowlisted and contain no user-info");
             }
             String scheme = uri.getScheme().toLowerCase(Locale.ROOT);
@@ -127,6 +127,16 @@ public final class JdbcConnectionPoolManager implements AutoCloseable {
         }
     }
 
+    private static boolean hasCredentialOrTlsOverride(String query) {
+        if (query == null || query.isBlank()) return false;
+        for (String pair : query.split("&")) {
+            String key = pair.split("=", 2)[0].toLowerCase(Locale.ROOT);
+            if (key.equals("user") || key.equals("username") || key.equals("password")
+                    || key.equals("sslmode") || key.equals("ssl_mode")) return true;
+        }
+        return false;
+    }
+
     private static void validatePoolSettings(SourceDefinition definition) {
         if (definition.displayName() == null || definition.displayName().isBlank()
                 || definition.username() == null || definition.username().isBlank()
@@ -137,6 +147,9 @@ public final class JdbcConnectionPoolManager implements AutoCloseable {
                 || definition.minimumIdle() < 0 || definition.minimumIdle() > definition.maximumPoolSize()
                 || definition.connectionTimeoutMs() < 250 || definition.connectionTimeoutMs() > 120_000) {
             throw new IllegalArgumentException("invalid JDBC pool limits");
+        }
+        if (!definition.readOnly()) {
+            throw new IllegalArgumentException("analytical JDBC sources must use read-only credentials and pools");
         }
         if (!definition.tlsRequired()) {
             throw new IllegalArgumentException("customer JDBC connections must require TLS");
