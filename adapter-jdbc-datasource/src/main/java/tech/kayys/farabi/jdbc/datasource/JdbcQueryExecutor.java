@@ -32,8 +32,10 @@ public final class JdbcQueryExecutor implements QueryExecutor {
         if (!descriptor.readOnly()) {
             throw new SecurityException("analytics JDBC execution requires a read-only source registration");
         }
-        try (Connection connection = registry.requireDataSource(request.sourceId()).getConnection();
-             PreparedStatement statement = connection.prepareStatement(request.sql())) {
+        try (Connection connection = registry.requireDataSource(request.sourceId()).getConnection()) {
+            // A connection-level read-only hint complements, but never replaces, read-only DB credentials.
+            connection.setReadOnly(true);
+            try (PreparedStatement statement = connection.prepareStatement(request.sql())) {
             statement.setMaxRows(request.maxRows() + 1);
             statement.setQueryTimeout(60);
             for (int i = 0; i < request.parameters().size(); i++) {
@@ -52,6 +54,7 @@ public final class JdbcQueryExecutor implements QueryExecutor {
                 boolean truncated = rows.size() > request.maxRows();
                 if (truncated) rows.remove(rows.size() - 1);
                 return new QueryResult(columns, rows, truncated);
+            }
             }
         } catch (SQLException e) {
             throw new IllegalStateException("JDBC query execution failed for source " + request.sourceId(), e);
