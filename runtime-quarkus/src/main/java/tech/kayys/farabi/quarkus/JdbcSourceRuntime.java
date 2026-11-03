@@ -7,6 +7,12 @@ import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
 import jakarta.enterprise.inject.Instance;
 import tech.kayys.farabi.jdbc.datasource.JdbcDataSourceRegistry;
+import tech.kayys.farabi.jdbc.datasource.JdbcCatalogProvider;
+import tech.kayys.farabi.jdbc.datasource.JdbcCapabilitiesProvider;
+import tech.kayys.farabi.jdbc.datasource.JdbcQueryExecutor;
+import tech.kayys.farabi.engine.DataSourcePorts.CatalogProvider;
+import tech.kayys.farabi.engine.DataSourcePorts.CapabilitiesProvider;
+import tech.kayys.farabi.engine.DataSourcePorts.QueryExecutor;
 
 /** Quarkus lifecycle boundary for runtime-owned customer JDBC pools. */
 @ApplicationScoped
@@ -23,6 +29,24 @@ public class JdbcSourceRuntime {
     @Singleton
     JdbcDataSourceRegistry registry() {
         return pools.registry();
+    }
+
+    @Produces
+    @Singleton
+    CatalogProvider catalogProvider(JdbcDataSourceRegistry registry) {
+        return new JdbcCatalogProvider(registry);
+    }
+
+    @Produces
+    @Singleton
+    CapabilitiesProvider capabilitiesProvider(JdbcDataSourceRegistry registry) {
+        return new JdbcCapabilitiesProvider(registry);
+    }
+
+    @Produces
+    @Singleton
+    QueryExecutor queryExecutor(JdbcDataSourceRegistry registry) {
+        return new JdbcQueryExecutor(registry);
     }
 
     @PreDestroy
