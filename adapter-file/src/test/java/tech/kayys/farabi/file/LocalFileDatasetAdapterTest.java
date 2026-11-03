@@ -81,6 +81,19 @@ class LocalFileDatasetAdapterTest {
                 () -> adapter.stage(request, new ByteArrayInputStream("id\n".getBytes(StandardCharsets.UTF_8))));
     }
 
+    @Test
+    void inventoriesOnlyWorkspaceFilesAndInspectsReferences() {
+        String csv = "id\\n1\\n";
+        var adapter = adapter(csv);
+        var staged = adapter.stage(request(Format.CSV, csv));
+        var inventory = adapter.list("workspace-a");
+        assertEquals(1, inventory.size());
+        assertEquals(staged.locationRef(), inventory.get(0).locationRef());
+        assertEquals(csv.getBytes(StandardCharsets.UTF_8).length, inventory.get(0).sizeBytes());
+        assertTrue(adapter.inspect(staged.locationRef(), "workspace-a").isPresent());
+        assertThrows(SecurityException.class, () -> adapter.inspect(staged.locationRef(), "workspace-b"));
+    }
+
     private LocalFileDatasetAdapter adapter(String value) {
         byte[] bytes = value.getBytes(StandardCharsets.UTF_8);
         return new LocalFileDatasetAdapter(temp, r -> new ByteArrayInputStream(bytes),
