@@ -18,6 +18,12 @@ public final class DataSourcePorts {
         List<ColumnMetadata> listColumns(String sourceId, String catalog, String schema, String objectName);
     }
 
+    /** Reports capabilities of the configured source; values are hints, not authorization. */
+    @FunctionalInterface
+    public interface CapabilitiesProvider {
+        DataSourceCapabilities capabilities(String sourceId);
+    }
+
     /** Executes only plans that have already passed Farabi authorization and policy validation. */
     @FunctionalInterface
     public interface QueryExecutor {
