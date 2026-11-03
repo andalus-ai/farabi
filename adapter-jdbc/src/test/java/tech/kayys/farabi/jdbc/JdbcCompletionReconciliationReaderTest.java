@@ -85,6 +85,10 @@ class JdbcCompletionReconciliationReaderTest {
         assertNull(snapshot.leaseOwner());
         assertNull(snapshot.leaseExpiresAt());
         assertEquals(7L, snapshot.leaseFence());
+        Attempt attempt = new Attempt(
+                ID, "workspace-a", "worker-a", 7, Status.RUNNING, Status.SUCCEEDED);
+        assertEquals(Outcome.APPLIED,
+                CompletionReconciliation.classify(attempt, reader.read(ID, "workspace-a"), NOW));
     }
 
     @Test
