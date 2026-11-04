@@ -45,12 +45,6 @@ class JdbcSourceProviderTest {
         assertEquals(Health.AVAILABLE, provider.testConnection(definition).health());
     }
 
-    @Test void appliesReadOnlyFlagToConnection() {
-        var readOnlyProvider = new JdbcSourceProvider(d -> new ReadOnlyTrackingConnection(
-                DriverManager.getConnection("jdbc:h2:mem:readonly;DB_CLOSE_DELAY=-1")));
-        // Connection read-only enforcement is exercised by the provider before metadata work.
-        assertDoesNotThrow(() -> readOnlyProvider.catalogs(definition));
-    }
     @Test void enforcesReadOnlyConnectionMode() {
         AtomicBoolean readOnlyApplied = new AtomicBoolean();
         var guarded = new JdbcSourceProvider(d -> {
