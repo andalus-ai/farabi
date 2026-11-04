@@ -4,6 +4,8 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.sql.Connection;
 import java.sql.DriverManager;
 import java.sql.Statement;
+import java.lang.reflect.Proxy;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.net.URI;
 import java.time.Instant;
 import java.util.Map;
@@ -48,5 +50,19 @@ class JdbcSourceProviderTest {
                 DriverManager.getConnection("jdbc:h2:mem:readonly;DB_CLOSE_DELAY=-1")));
         // Connection read-only enforcement is exercised by the provider before metadata work.
         assertDoesNotThrow(() -> readOnlyProvider.catalogs(definition));
+    }
+    @Test void enforcesReadOnlyConnectionMode() {
+        AtomicBoolean readOnlyApplied = new AtomicBoolean();
+        var guarded = new JdbcSourceProvider(d -> {
+            Connection delegate = DriverManager.getConnection("jdbc:h2:mem:readonly;DB_CLOSE_DELAY=-1");
+            return (Connection) Proxy.newProxyInstance(Connection.class.getClassLoader(),
+                    new Class<?>[]{Connection.class}, (proxy, method, args) -> {
+                        if (method.getName().equals("setReadOnly")) readOnlyApplied.set((Boolean) args[0]);
+                        try { return method.invoke(delegate, args); }
+                        catch (java.lang.reflect.InvocationTargetException e) { throw e.getCause(); }
+                    });
+        });
+        assertDoesNotThrow(() -> guarded.catalogs(definition));
+        assertTrue(readOnlyApplied.get());
     }
 }
