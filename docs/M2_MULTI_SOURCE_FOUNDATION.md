@@ -1,6 +1,6 @@
 # M2 — Multi-source data foundation
 
-**Status:** Initial engine contracts and governed registry use cases implemented on `feature/m2-multisource-foundation`. Connector adapters and runtime wiring are not yet implemented or verified.
+**Status:** Initial engine contracts, governed registry use cases and a generic JDBC metadata provider are committed on `feature/m2-multisource-foundation`. Runtime wiring, production connection creation and real PostgreSQL/MySQL integration remain outstanding.
 
 ## Objective
 
@@ -12,6 +12,8 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 - `DataSourcePorts`: connection registry, provider, provider registry, secret resolver and connection authorization ports.
 - `DataSourceRegistryService`: authorization-before-registration/discovery, provider availability checks and workspace-scoped lookup.
 - Unit tests for immutable connection properties, rejection of credential-bearing endpoints, unknown providers, authorization order and workspace isolation.
+- `adapter-jdbc-source`: generic JDBC provider for catalog/schema/table/view/column discovery, JDBC-to-Farabi logical type mapping, capability/dialect identification and health checks. It receives a connection factory from the host runtime; secret resolution, pooling and driver configuration are intentionally not embedded in the adapter.
+- H2 metadata tests covering schema/table/column discovery, JSON and common JDBC type mapping, capability reporting, health checks and read-only connection mode.
 
 ## Security invariants
 
@@ -24,14 +26,14 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 
 ## Next implementation batches
 
-### M2-A — Generic JDBC adapter
+### M2-A — Generic JDBC adapter (foundation committed)
 
-- Add a dedicated `adapter-jdbc-datasource` module; do not repurpose `adapter-jdbc`, which stores Farabi metadata.
-- Implement connection creation using an injected connection factory/secret resolver boundary.
-- Discover catalogs, schemas, tables/views and columns using JDBC metadata.
-- Map JDBC types into Farabi logical types while preserving native type names.
-- Add dialect SPI for PostgreSQL and MySQL behavior.
-- Add H2 tests and PostgreSQL/MySQL Testcontainers contract tests.
+- Dedicated `adapter-jdbc-source` Maven module; `adapter-jdbc` remains the Farabi metadata persistence adapter.
+- Injected connection factory keeps credential resolution, pooling, driver selection and TLS policy at the runtime boundary.
+- Catalog, schema, table/view and column discovery uses JDBC metadata.
+- JDBC types map to Farabi logical types while native type names are preserved in metadata.
+- Basic dialect identification is present; vendor-specific dialect behavior and PostgreSQL/MySQL Testcontainers contract tests remain to be implemented.
+- Next: runtime connection factory backed by the secret resolver, PostgreSQL/MySQL integration tests, and end-to-end query execution through existing governed query ports.
 
 ### M2-B — Dremio provider alignment
 
@@ -64,4 +66,4 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 
 ## Verification status
 
-The GitHub source changes have been committed to the feature branch. Maven compilation, unit tests and integration tests have **not** been run in this environment. Do not treat this batch as build-verified or production-ready.
+The GitHub source changes have been committed to the feature branch. Maven compilation, unit tests and integration tests have **not** been run in this environment. GitHub Actions results have not yet been confirmed. Do not treat this batch as build-verified or production-ready.
