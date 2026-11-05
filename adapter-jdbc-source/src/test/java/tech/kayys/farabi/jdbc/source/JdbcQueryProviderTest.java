@@ -60,9 +60,24 @@ class JdbcQueryProviderTest {
                 List.of(new Parameter(2, "x", java.sql.Types.VARCHAR))));
     }
 
-    @Test void boundsResultPageSizeAndCacheLifetime() {
-        var submission = provider.submit(new Plan("orders", "SELECT id FROM orders ORDER BY id"));
+    @Test void reportsWhenConfiguredRowLimitTruncatesResults() {
+        var limited = new JdbcQueryProvider(sourceId -> DriverManager.getConnection(
+                "jdbc:h2:mem:query;DB_CLOSE_DELAY=-1"), 2, 20, 10, 5);
+        var submission = limited.submit(new Plan("orders", "SELECT id FROM orders ORDER BY id"));
+        var page = limited.results(submission.providerJobId(), 0, 10);
+        assertEquals(2, page.rows().size());
+        assertTrue(page.truncated());
+        assertFalse(page.hasMore());
+    }
+
+    @Test void boundsPageSizeAndEvictsOldCachedJobs() {
+        var bounded = new JdbcQueryProvider(sourceId -> DriverManager.getConnection(
+                "jdbc:h2:mem:query;DB_CLOSE_DELAY=-1"), 100, 20, 10, 1);
+        var first = bounded.submit(new Plan("orders", "SELECT id FROM orders ORDER BY id"));
+        var second = bounded.submit(new Plan("orders", "SELECT id FROM orders ORDER BY id"));
         assertThrows(IllegalArgumentException.class,
-                () -> provider.results(submission.providerJobId(), 0, 26));
+                () -> bounded.results(second.providerJobId(), 0, 11));
+        assertThrows(IllegalArgumentException.class,
+                () -> bounded.results(first.providerJobId(), 0, 1));
     }
 }
