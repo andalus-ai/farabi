@@ -5,15 +5,12 @@ import java.sql.PreparedStatement;
 import java.sql.ResultSet;
 import java.sql.ResultSetMetaData;
 import java.sql.SQLException;
-import java.sql.Statement;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
-import java.util.concurrent.ConcurrentLinkedQueue;
 import tech.kayys.farabi.engine.QueryContracts.*;
 import tech.kayys.farabi.engine.QueryLifecycle;
 import tech.kayys.farabi.engine.QueryPorts;
@@ -31,16 +28,14 @@ public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecy
         Connection open(String sourceId) throws SQLException;
     }
 
-    private record Job(List<String> columns, List<Map<String, Object>> rows, boolean cancelled) {}
+    private record Job(List<String> columns, List<Map<String, Object>> rows, boolean truncated) {}
 
     private final ConnectionFactory connections;
     private final int maxRows;
     private final int fetchSize;
     private final int maxPageSize;
     private final int maxCachedJobs;
-    private final ConcurrentHashMap<String, Job> jobs = new ConcurrentHashMap<>();
-    private final ConcurrentLinkedQueue<String> insertionOrder = new ConcurrentLinkedQueue<>();
-    private final ConcurrentHashMap<String, Statement> activeStatements = new ConcurrentHashMap<>();
+    private final Map<String, Job> jobs = java.util.Collections.synchronizedMap(new java.util.LinkedHashMap<>(16, 0.75f, true));
 
     public JdbcQueryProvider(ConnectionFactory connections, int maxRows, int fetchSize,
                              int maxPageSize, int maxCachedJobs) {
@@ -62,10 +57,10 @@ public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecy
             connection.setReadOnly(true);
             try (PreparedStatement statement = connection.prepareStatement(
                     plan.sql(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
-                statement.setMaxRows(maxRows);
+                statement.setMaxRows(Math.addExact(maxRows, 1));
+                statement.setQueryTimeout(30);
                 statement.setFetchSize(fetchSize);
                 bind(statement, plan.parameters());
-                activeStatements.put(jobId, statement);
                 try (ResultSet result = statement.executeQuery()) {
                     ResultSetMetaData metadata = result.getMetaData();
                     List<String> columns = new ArrayList<>(metadata.getColumnCount());
@@ -73,23 +68,29 @@ public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecy
                         columns.add(metadata.getColumnLabel(i));
                     }
                     List<Map<String, Object>> rows = new ArrayList<>();
+                    boolean truncated = false;
                     while (result.next()) {
+                        if (rows.size() == maxRows) {
+                            truncated = true;
+                            break;
+                        }
                         Map<String, Object> row = new LinkedHashMap<>();
                         for (int i = 1; i <= metadata.getColumnCount(); i++) {
                             row.put(columns.get(i - 1), result.getObject(i));
                         }
                         rows.add(row);
                     }
-                    jobs.put(jobId, new Job(List.copyOf(columns), List.copyOf(rows), false));
-                    insertionOrder.add(jobId);
-                    evictOverflow();
+                    synchronized (jobs) {
+                        jobs.put(jobId, new Job(List.copyOf(columns), List.copyOf(rows), truncated));
+                        while (jobs.size() > maxCachedJobs) {
+                            String eldest = jobs.keySet().iterator().next();
+                            jobs.remove(eldest);
+                        }
+                    }
                     return new Submission(jobId);
-                } finally {
-                    activeStatements.remove(jobId);
                 }
             }
         } catch (SQLException e) {
-            activeStatements.remove(jobId);
             throw new IllegalStateException("JDBC query failed (SQLState " + e.getSQLState() + ")", e);
         }
     }
@@ -112,8 +113,7 @@ public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecy
 
     @Override public QueryLifecycle.RemoteState status(String providerJobId) {
         Job job = requireJob(providerJobId);
-        return new QueryLifecycle.RemoteState(
-                job.cancelled() ? Status.CANCELLED : Status.SUCCEEDED, null);
+        return new QueryLifecycle.RemoteState(Status.SUCCEEDED, null);
     }
 
     @Override public QueryLifecycle.ResultPage results(String providerJobId, int offset, int limit) {
@@ -121,23 +121,16 @@ public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecy
             throw new IllegalArgumentException("invalid result page request");
         }
         Job job = requireJob(providerJobId);
-        if (job.cancelled()) throw new IllegalStateException("query was cancelled");
         int end = Math.min(job.rows().size(), Math.addExact(offset, limit));
         List<Map<String, Object>> page = offset >= job.rows().size()
                 ? List.of() : job.rows().subList(offset, end);
-        return new QueryLifecycle.ResultPage(job.columns(), page, offset, end < job.rows().size());
+        return new QueryLifecycle.ResultPage(job.columns(), page, offset, end < job.rows().size(),
+                job.truncated() && end == job.rows().size());
     }
 
     @Override public void cancel(String providerJobId) {
-        Statement statement = activeStatements.get(providerJobId);
-        if (statement != null) {
-            try { statement.cancel(); }
-            catch (SQLException e) { throw new IllegalStateException("JDBC query cancellation failed", e); }
-        }
-        jobs.compute(providerJobId, (id, job) -> {
-            if (job == null) throw new IllegalArgumentException("unknown or expired JDBC query job");
-            return new Job(job.columns(), job.rows(), true);
-        });
+        throw new UnsupportedOperationException(
+                "synchronous JDBC execution cannot be cancelled after submission; use the async worker adapter");
     }
 
     private Job requireJob(String id) {
@@ -147,11 +140,4 @@ public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecy
         return job;
     }
 
-    private void evictOverflow() {
-        while (jobs.size() > maxCachedJobs) {
-            String oldest = insertionOrder.poll();
-            if (oldest == null) return;
-            jobs.remove(oldest);
-        }
-    }
 }
