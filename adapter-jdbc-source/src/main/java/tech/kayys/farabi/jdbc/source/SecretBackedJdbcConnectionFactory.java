@@ -85,10 +85,19 @@ public final class SecretBackedJdbcConnectionFactory implements JdbcSourceProvid
             if (connection == null) {
                 throw new IllegalStateException("JDBC connection opener returned null");
             }
-            if (definition.readOnly()) {
-                connection.setReadOnly(true);
+            try {
+                if (definition.readOnly()) {
+                    connection.setReadOnly(true);
+                }
+                return connection;
+            } catch (SQLException | RuntimeException failure) {
+                try {
+                    connection.close();
+                } catch (SQLException closeFailure) {
+                    failure.addSuppressed(closeFailure);
+                }
+                throw failure;
             }
-            return connection;
         } finally {
             // JDBC's Properties API requires immutable String values; remove the password
             // immediately after opening and always wipe the resolver-owned char[].
