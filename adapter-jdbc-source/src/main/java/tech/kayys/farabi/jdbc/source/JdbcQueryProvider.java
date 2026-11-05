@@ -19,7 +19,10 @@ import tech.kayys.farabi.engine.QueryPorts;
  * Synchronous, bounded JDBC query adapter.
  *
  * The injected connection factory must resolve an already-authorized source ID to a
- * configured connection. Authorization and workspace scoping remain engine/runtime duties.
+ * configured connection using a read-only database principal. Connection.setReadOnly(true)
+ * is only a JDBC hint and is not a substitute for database-enforced least privilege.
+ * Authorization and workspace scoping remain engine/runtime duties. SQL must come from
+ * Farabi's governed compiler; user values must be represented as Plan parameters.
  * Results are held in a bounded process-local cache; this adapter is not a durable job store.
  */
 public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecycle.Provider {
@@ -40,7 +43,7 @@ public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecy
     public JdbcQueryProvider(ConnectionFactory connections, int maxRows, int fetchSize,
                              int maxPageSize, int maxCachedJobs) {
         this.connections = Objects.requireNonNull(connections, "connections");
-        if (maxRows < 1 || fetchSize < 1 || maxPageSize < 1 || maxCachedJobs < 1) {
+        if (maxRows < 1 || maxRows == Integer.MAX_VALUE || fetchSize < 1 || maxPageSize < 1 || maxCachedJobs < 1) {
             throw new IllegalArgumentException("JDBC query limits must be positive");
         }
         this.maxRows = maxRows;
