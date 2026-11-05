@@ -19,7 +19,10 @@ import tech.kayys.farabi.engine.DataSourcePorts.SecretResolver;
  *
  * <p>The secret reference is treated as the JDBC password. The optional {@code username}
  * connection property is translated to the JDBC {@code user} property. Raw credentials
- * are never written back to the connection definition.</p>
+ * are never written back to the connection definition. JDBC's standard {@link Properties}
+ * API requires a {@link String} password, which cannot be zeroed; the temporary property
+ * is removed immediately after opening, and the resolver-owned {@code char[]} is wiped.
+ * The opener and driver must not retain the supplied properties.</p>
  */
 public final class SecretBackedJdbcConnectionFactory implements JdbcSourceProvider.ConnectionFactory {
     @FunctionalInterface
