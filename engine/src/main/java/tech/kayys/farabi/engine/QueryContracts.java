@@ -20,9 +20,6 @@ public final class QueryContracts {
     public record Parameter(int position, Object value, Integer jdbcType) {
         public Parameter {
             if (position < 1) throw new IllegalArgumentException("parameter position must be positive");
-            if (jdbcType != null && jdbcType == java.sql.Types.NULL) {
-                // Types.NULL is valid for explicit SQL NULL binding.
-            }
             if (value != null && !(value instanceof String || value instanceof Boolean
                     || value instanceof Byte || value instanceof Short || value instanceof Integer
                     || value instanceof Long || value instanceof Float || value instanceof Double
