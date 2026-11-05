@@ -55,6 +55,19 @@ class JdbcQueryProviderTest {
         assertThrows(IllegalArgumentException.class, () -> provider.submit(plan));
     }
 
+    @Test void bindsTypedNullParameters() {
+        var submission = provider.submit(new Plan("orders",
+                "SELECT id FROM orders WHERE note = ?",
+                List.of(new Parameter(1, null, java.sql.Types.VARCHAR))));
+        assertEquals(0, provider.results(submission.providerJobId(), 0, 10).rows().size());
+    }
+
+    @Test void explicitlyRejectsCancellationForSynchronousExecution() {
+        var submission = provider.submit(new Plan("orders", "SELECT id FROM orders"));
+        assertThrows(UnsupportedOperationException.class,
+                () -> provider.cancel(submission.providerJobId()));
+    }
+
     @Test void rejectsNonContiguousParameterPositions() {
         assertThrows(IllegalArgumentException.class, () -> new Plan("orders", "SELECT ?",
                 List.of(new Parameter(2, "x", java.sql.Types.VARCHAR))));
