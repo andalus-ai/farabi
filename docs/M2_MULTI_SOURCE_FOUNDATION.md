@@ -1,6 +1,6 @@
 # M2 — Multi-source data foundation
 
-**Status:** Initial engine contracts, governed registry use cases and a generic JDBC metadata provider are committed on `feature/m2-multisource-foundation`. Runtime wiring, production connection creation and real PostgreSQL/MySQL integration remain outstanding.
+**Status:** Initial engine contracts, governed registry use cases, generic JDBC metadata discovery and a bounded synchronous JDBC query adapter are committed on `feature/m2-multisource-foundation`. Runtime wiring, durable/asynchronous execution and real PostgreSQL/MySQL integration remain outstanding.
 
 ## Objective
 
@@ -14,6 +14,9 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 - Unit tests for immutable connection properties, rejection of credential-bearing endpoints, unknown providers, authorization order and workspace isolation.
 - `adapter-jdbc-source`: generic JDBC provider for catalog/schema/table/view/column discovery, JDBC-to-Farabi logical type mapping, capability/dialect identification and health checks. It receives a connection factory from the host runtime; secret resolution, pooling and driver configuration are intentionally not embedded in the adapter.
 - H2 metadata tests covering schema/table/column discovery, JSON and common JDBC type mapping, capability reporting, health checks and read-only connection mode.
+- `QueryContracts.Plan` now supports ordered, typed positional parameters; JDBC uses `PreparedStatement` binding and requires an explicit JDBC type for SQL NULL.
+- `QueryLifecycle.ResultPage` preserves nullable values and exposes a `truncated` flag.
+- `JdbcQueryProvider` implements the existing `QueryPorts.Executor` and `QueryLifecycle.Provider` contracts for bounded synchronous query execution, read-only connection mode, 30-second statement timeout, fetch-size/result/page limits, process-local LRU result retention and result paging.
 
 ## Security invariants
 
@@ -33,7 +36,8 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 - Catalog, schema, table/view and column discovery uses JDBC metadata.
 - JDBC types map to Farabi logical types while native type names are preserved in metadata.
 - Basic dialect identification is present; vendor-specific dialect behavior and PostgreSQL/MySQL Testcontainers contract tests remain to be implemented.
-- Next: runtime connection factory backed by the secret resolver, PostgreSQL/MySQL integration tests, and end-to-end query execution through existing governed query ports.
+- Limitations: this first executor is synchronous, cannot cancel a query after submission, and retains results only in a bounded process-local cache. It is not a durable job system and must not be advertised as asynchronous or horizontally scalable.
+- Next: runtime connection factory backed by the secret resolver and a read-only database principal, PostgreSQL/MySQL integration tests, and end-to-end wiring through the governed query use case. A durable worker-backed executor should replace the synchronous adapter before production async workloads.
 
 ### M2-B — Dremio provider alignment
 
@@ -66,4 +70,4 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 
 ## Verification status
 
-The GitHub source changes have been committed to the feature branch. Maven compilation, unit tests and integration tests have **not** been run in this environment. GitHub Actions results have not yet been confirmed. Do not treat this batch as build-verified or production-ready.
+The GitHub source changes have been committed to the feature branch. Maven compilation, unit tests and integration tests have **not** been run in this environment. The repository CI workflow runs on branch pushes, but no successful run has been confirmed here. Do not treat this batch as build-verified or production-ready.
