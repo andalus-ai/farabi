@@ -128,7 +128,7 @@ public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecy
         List<Map<String, Object>> page = offset >= job.rows().size()
                 ? List.of() : job.rows().subList(offset, end);
         return new QueryLifecycle.ResultPage(job.columns(), page, offset, end < job.rows().size(),
-                job.truncated() && end == job.rows().size());
+                job.truncated() && offset < job.rows().size() && end == job.rows().size());
     }
 
     @Override public void cancel(String providerJobId) {
