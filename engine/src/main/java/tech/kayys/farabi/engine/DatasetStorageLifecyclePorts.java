@@ -29,7 +29,7 @@ public final class DatasetStorageLifecyclePorts {
     }
 
     public interface Store {
-        /** Atomically tombstones the dataset and creates/reuses its deletion job. */
+        /** Legacy direct request port; implementations must fail closed when maker-checker governance is enabled. */
         Optional<Deletion> request(UUID datasetId, String workspaceId, Instant now, int maxAttempts);
         Optional<Deletion> claim(Lease lease);
         boolean complete(UUID jobId, UUID token, Instant now);
@@ -41,9 +41,10 @@ public final class DatasetStorageLifecyclePorts {
         void authorizeDeletion(String workspaceId, String subjectId, UUID datasetId);
     }
 
-    @FunctionalInterface
     public interface ObjectStore {
         /** Must validate that the opaque location reference belongs to workspaceId. */
         void delete(String locationRef, String workspaceId);
+        /** Returns true only when a workspace-scoped provider lookup confirms the object exists. */
+        boolean exists(String locationRef, String workspaceId);
     }
 }
