@@ -18,16 +18,19 @@ management product.
 ## Engine contracts
 
 `DataSourceContracts` defines source descriptors, catalog objects, column metadata,
-bounded query requests and typed tabular results.
+bounded query requests and typed tabular results. `DataSourceCapabilities` is an immutable,
+provider-neutral snapshot of useful source/driver facts; it contains no JDBC classes.
 
-`DataSourcePorts` defines three replaceable ports:
+`DataSourcePorts` defines replaceable ports:
 
 - `Registry`: discover configured source descriptors.
 - `CatalogProvider`: enumerate tables/views and their columns.
+- `CapabilitiesProvider`: report capabilities of a connected source.
 - `QueryExecutor`: execute a bounded, parameterized query against a source.
 
 A runtime may compose different implementations behind these ports. The engine does not
-create connections or store credentials.
+create connections or store credentials. Capabilities are advisory metadata, not policy
+decisions and not proof that an operation is safe.
 
 ## JDBC adapter
 
@@ -36,6 +39,10 @@ create connections or store credentials.
 - `JdbcDataSourceRegistry`: immutable mapping from Farabi source IDs to application-managed
   `javax.sql.DataSource` pools.
 - `JdbcCatalogProvider`: JDBC DatabaseMetaData-based table and column discovery.
+- `JdbcCapabilitiesProvider`: reports database/driver versions, identifier quoting,
+  transaction support and metadata limits from the live JDBC driver.
+- `JdbcSourceRuntime` (Quarkus): exposes the registry, catalog, capability and query ports
+  through CDI while owning pool shutdown.
 - `JdbcQueryExecutor`: prepared-statement execution, bind parameters, query timeout and
   row cap with a truncation indicator.
 
@@ -62,42 +69,88 @@ add database-side statement/resource limits and cancellation integration. JDBC d
 behavior differs; validate timeout, cancellation, type mapping and metadata semantics for
 each supported database/version.
 
+## Runtime-managed connection lifecycle (initial slice)
+
+Quarkus runtime configuration supports named entries under `farabi.sources.jdbc.<source-id>`.
+Each entry requires a display name, JDBC URL, username and opaque password secret reference.
+Resolved passwords are obtained through the runtime `SecretResolver` port; inline passwords
+are not part of the source configuration contract. A deployment must install exactly one
+secret resolver when at least one customer source is configured. With no configured sources,
+the registry is empty and no resolver is required.
+
+The runtime creates HikariCP pools, owns their lifecycle, and closes them at shutdown. Pool
+size is bounded (1–50 per source), total configured pool capacity is capped at 200
+connections across at most 32 sources, connection timeout is bounded, and source IDs are
+validated before being used in pool names. The initial runtime supports PostgreSQL and MySQL JDBC URL schemes.
+Every source must require TLS: PostgreSQL uses `sslmode=verify-full`; MySQL uses
+`sslMode=VERIFY_IDENTITY`. TLS cannot be disabled in this runtime slice.
+
+Outbound hosts must be exact-match allowlisted using `farabi.sources.allowed-hosts`.
+The URL cannot embed user-info or override TLS, credentials, or driver socket routing. This is an application-level SSRF guard, not a replacement
+for network egress controls: deployments must also restrict outbound routes and DNS/network
+resolution. Never allowlist broad wildcards or public internet ranges.
+
+Example configuration (secret reference only; no secret value):
+
+```properties
+farabi.sources.allowed-hosts=warehouse.internal,reporting.internal
+farabi.sources.jdbc.warehouse.display-name=Warehouse
+farabi.sources.jdbc.warehouse.url=${FARABI_WAREHOUSE_JDBC_URL}
+farabi.sources.jdbc.warehouse.username=${FARABI_WAREHOUSE_DB_USER}
+farabi.sources.jdbc.warehouse.password-secret-ref=${FARABI_WAREHOUSE_PASSWORD_SECRET_REF}
+farabi.sources.jdbc.warehouse.read-only=true
+farabi.sources.jdbc.warehouse.tls-required=true
+farabi.sources.jdbc.warehouse.maximum-pool-size=10
+farabi.sources.jdbc.warehouse.minimum-idle=0
+farabi.sources.jdbc.warehouse.connection-timeout-ms=30000
+```
+
+The secret resolver is an integration port, not a built-in Vault/KMS implementation. Secret
+rotation currently requires runtime pool recreation/restart; hot rotation and pool draining
+are a later increment. TLS trust roots/client certificates are deployment/driver configuration
+and require environment-specific validation.
+
 ## Current limitations
 
 - No public connection CRUD API or persisted connection registry yet.
-- Pool provisioning, secret references, credential rotation, TLS policy and network policy
-  are runtime responsibilities and still need an explicit management design.
-- No dialect SPI yet. JDBC metadata and SQL behavior vary by vendor.
-- The existing Dremio query lifecycle adapter has not yet been adapted to the new catalog
-  SPI; Dremio remains independently wired through the existing query ports.
+- Connection pools, opaque secret references, TLS enforcement and exact-host allowlisting
+  are now wired in Quarkus. A concrete secret-manager plugin, hot credential rotation,
+  pool draining, TLS trust-root management and deployment egress policies remain outstanding.
+- The capability snapshot is not yet a complete dialect SPI: Farabi does not yet provide
+  portable pagination, type normalization, cancellation or SQL-generation strategies.
+- The existing Dremio query lifecycle adapter has not yet been adapted to the new source
+  catalog/capability SPI; Dremio remains independently wired through the existing query ports.
 - No cross-source joins or distributed federation are implemented. Use Dremio/Toba or Trino
   for federation rather than adding a federation engine to Farabi.
 - The JDBC query port returns synchronous tabular results. It is not yet wired into the
   existing durable asynchronous query-job lifecycle.
-- Driver compatibility should be proven with integration tests for PostgreSQL, MySQL/MariaDB,
-  SQL Server and Oracle before claiming support. The initial test uses H2 only.
+- PostgreSQL and MySQL compatibility tests are present using Testcontainers, but the full
+  driver matrix (MariaDB, SQL Server, Oracle and other targets) is not established.
 
 ## Verification
 
-The adapter module includes H2 tests for metadata discovery, parameter binding, row limiting,
-unknown source rejection and read-only registration enforcement. Run:
+The adapter module includes H2 unit tests for metadata discovery, parameter binding, row
+limiting, unknown source rejection, read-only registration enforcement and capability
+discovery. PostgreSQL 16 and MySQL 8.4 integration tests run with Testcontainers and are
+automatically skipped when Docker is unavailable.
+
+Run:
 
 ```bash
 mvn -pl adapter-jdbc-datasource -am test
-mvn test
+mvn verify
 ```
 
-The test suite has not been executed as part of authoring this change; CI/build evidence must
-be recorded separately.
+These checks have not yet been executed in this authoring session; build/CI evidence must be
+recorded separately.
 
 ## Next increments
 
-1. Introduce a dialect/capability SPI for identifier quoting, pagination, type mapping and
-   cancellation semantics.
-2. Add PostgreSQL and MySQL Testcontainers integration tests and publish a supported-driver
-   matrix.
-3. Add runtime-managed connection definitions with secret references, TLS and pool limits.
-4. Adapt Dremio and later Trino catalog/query capabilities to the same source contracts where
-   semantics genuinely align.
-5. Add durable query-job integration for synchronous JDBC execution without weakening
+1. Complete dialect behavior (identifier quoting, pagination, type normalization and
+   cancellation) only where real providers need a common abstraction.
+2. Add runtime-managed connection definitions with secret references, TLS and pool limits.
+3. Adapt Dremio catalog and execution capabilities to the common source contracts without
+   replacing its durable asynchronous job lifecycle.
+4. Add durable query-job integration for synchronous JDBC execution without weakening
    deadlines, cancellation, audit or workspace authorization.
+5. Publish a tested driver/version compatibility matrix.
