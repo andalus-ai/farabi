@@ -12,9 +12,14 @@
 ## Modules
 `engine` — domain, ports and application use cases.
 `runtime-core` — framework-neutral composition.
-`adapter-jdbc` — PostgreSQL-compatible execution metadata persistence.
-`adapter-dremio` — Dremio REST query submission.
+`adapter-jdbc` — execution metadata, artifact and dataset persistence.
+`adapter-jdbc-datasource` — customer analytical database connectivity through application-managed JDBC pools.
+`adapter-dremio` — Dremio REST query submission and job lifecycle.
+`adapter-file` / `adapter-s3` — file intake, profiling and object storage.
 `runtime-quarkus` — optional Quarkus deployment.
+
+## Multi-source connectivity
+See [Multi-source Data Source SPI](docs/multi-source-data-source-spi.md) for the provider-neutral source contracts, JDBC adapter boundary, security assumptions and current limitations. The JDBC module is distinct from metadata persistence; connector support is not yet production-complete.
 
 ## Ecosystem dependencies
 See [Ecosystem Dependencies and Integration Boundaries](docs/ECOSYSTEM_DEPENDENCIES.md) for the Numou, Andalus Framework/Runtime, Toba, Batik, and Tenun dependency map, candidate Maven artifacts, runtime compatibility constraints, ownership rules, and integration acceptance gates. These are architectural candidates, not claims of completed integrations.
