@@ -8,6 +8,10 @@ import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.TimeUnit;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -92,6 +96,78 @@ class JdbcWorkerLeaseRepositoryTest {
                 assertNull(result.getString("lease_owner"));
                 assertEquals(2L, result.getLong("lease_fence"));
                 assertNull(result.getTimestamp("lease_expires_at"));
+            }
+        }
+    }
+
+
+
+    @Test
+    void leaseIsExpiredAtTheExactExpiryInstant() throws Exception {
+        UUID executionId = insertExecution("workspace-a", Status.SUBMITTED);
+        Lease first = repository.claim(executionId, "workspace-a", "worker-a", NOW, TTL)
+                .orElseThrow();
+        Instant expiresAt = NOW.plus(TTL);
+
+        assertFalse(repository.renew(first, expiresAt, TTL),
+                "renewal must reject a lease at its exclusive expiry boundary");
+        assertFalse(repository.complete(first, Status.SUBMITTED, Status.RUNNING, expiresAt),
+                "completion must reject a lease at its exclusive expiry boundary");
+
+        Lease replacement = repository.claim(executionId, "workspace-a", "worker-b",
+                expiresAt, TTL).orElseThrow();
+        assertEquals(2L, replacement.fence());
+        assertFalse(repository.complete(first, Status.SUBMITTED, Status.RUNNING,
+                expiresAt.plusMillis(1)),
+                "the expired worker must remain fenced out after reclamation");
+        assertTrue(repository.complete(replacement, Status.SUBMITTED, Status.RUNNING,
+                expiresAt.plusMillis(1)));
+    }
+
+    @Test
+    void concurrentWorkersCannotClaimTheSameExecution() throws Exception {
+        UUID executionId = insertExecution("workspace-a", Status.SUBMITTED);
+        CountDownLatch ready = new CountDownLatch(2);
+        CountDownLatch start = new CountDownLatch(1);
+        ExecutorService workers = Executors.newFixedThreadPool(2);
+
+        try {
+            var first = workers.submit(() -> {
+                ready.countDown();
+                assertTrue(start.await(10, TimeUnit.SECONDS));
+                return repository.claim(executionId, "workspace-a", "worker-a", NOW, TTL);
+            });
+            var second = workers.submit(() -> {
+                ready.countDown();
+                assertTrue(start.await(10, TimeUnit.SECONDS));
+                return repository.claim(executionId, "workspace-a", "worker-b", NOW, TTL);
+            });
+
+            assertTrue(ready.await(10, TimeUnit.SECONDS), "both workers should be ready");
+            start.countDown();
+
+            var firstClaim = first.get(10, TimeUnit.SECONDS);
+            var secondClaim = second.get(10, TimeUnit.SECONDS);
+            assertNotEquals(firstClaim.isPresent(), secondClaim.isPresent(),
+                    "exactly one concurrent claimant must acquire the lease");
+
+            Lease winner = firstClaim.orElseGet(secondClaim::orElseThrow);
+            assertEquals(1L, winner.fence(),
+                    "a losing concurrent claim must not increment the fencing token");
+            assertTrue(winner.workerId().equals("worker-a")
+                    || winner.workerId().equals("worker-b"));
+        } finally {
+            workers.shutdownNow();
+        }
+
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.prepareStatement(
+                     "SELECT lease_owner, lease_fence FROM farabi_query_executions WHERE id=?")) {
+            statement.setObject(1, executionId);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next());
+                assertEquals(1L, result.getLong("lease_fence"));
+                assertNotNull(result.getString("lease_owner"));
             }
         }
     }
