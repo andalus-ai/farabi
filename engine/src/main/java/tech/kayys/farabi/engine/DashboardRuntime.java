@@ -11,6 +11,13 @@ public final class DashboardRuntime {
  public interface DatasetAccess {
   void authorize(String workspace,String subject,String datasetId);
   List<Map<String,Object>> fetch(String workspace,String subject,String datasetId,int limit);
+  /** Execute chart predicates in the trusted data adapter; never silently drop filters. */
+  default List<Map<String,Object>> fetch(String workspace,String subject,String datasetId,
+      List<VisualizationContracts.Filter> filters,int limit) {
+   if(!filters.isEmpty()) throw new UnsupportedOperationException(
+       "dataset adapter must implement server-side chart filters");
+   return fetch(workspace,subject,datasetId,limit);
+  }
  }
  public record ChartData(String chartId,String renderer,List<Map<String,Object>> rows) {
   public ChartData {rows=List.copyOf(Objects.requireNonNull(rows).stream().map(row -> Collections.unmodifiableMap(new LinkedHashMap<>(row))).toList());}
@@ -18,6 +25,7 @@ public final class DashboardRuntime {
  public record Rendered(RendererEnvelope.Dashboard dashboard,List<ChartData> data) {
   public Rendered {data=List.copyOf(data);}
  }
+ private record FetchKey(String datasetId,List<VisualizationContracts.Filter> filters) {}
  private final Repository manifests;
  private final DatasetAccess datasets;
  public DashboardRuntime(Repository manifests,DatasetAccess datasets) {
@@ -33,12 +41,12 @@ public final class DashboardRuntime {
   LinkedHashSet<String> required=new LinkedHashSet<>();
   for(var chart:envelope.charts())required.add(chart.datasetId());
   for(String dataset:required)datasets.authorize(workspace,subject,dataset);
-  Map<String,List<Map<String,Object>>> fetched=new HashMap<>();
-  for(String dataset:required)fetched.put(dataset,List.copyOf(Objects.requireNonNull(datasets.fetch(workspace,subject,dataset,limit))));
+  Map<FetchKey,List<Map<String,Object>>> fetched=new HashMap<>();
   List<ChartData> charts=new ArrayList<>();
   for(var chart:envelope.charts()){
-   List<Map<String,Object>> rows=fetched.get(chart.datasetId());
-   // No UI filters are executed here: governed server-side predicates are required.
+   FetchKey key=new FetchKey(chart.datasetId(),chart.filters());
+   List<Map<String,Object>> rows=fetched.computeIfAbsent(key,ignored -> List.copyOf(
+       Objects.requireNonNull(datasets.fetch(workspace,subject,chart.datasetId(),chart.filters(),limit))));
    charts.add(new ChartData(chart.id(),chart.renderer(),rows));
   }
   return new Rendered(envelope,charts);
