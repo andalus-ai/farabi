@@ -101,6 +101,29 @@ class JdbcWorkerLeaseRepositoryTest {
     }
 
 
+
+    @Test
+    void leaseIsExpiredAtTheExactExpiryInstant() throws Exception {
+        UUID executionId = insertExecution("workspace-a", Status.SUBMITTED);
+        Lease first = repository.claim(executionId, "workspace-a", "worker-a", NOW, TTL)
+                .orElseThrow();
+        Instant expiresAt = NOW.plus(TTL);
+
+        assertFalse(repository.renew(first, expiresAt, TTL),
+                "renewal must reject a lease at its exclusive expiry boundary");
+        assertFalse(repository.complete(first, Status.SUBMITTED, Status.RUNNING, expiresAt),
+                "completion must reject a lease at its exclusive expiry boundary");
+
+        Lease replacement = repository.claim(executionId, "workspace-a", "worker-b",
+                expiresAt, TTL).orElseThrow();
+        assertEquals(2L, replacement.fence());
+        assertFalse(repository.complete(first, Status.SUBMITTED, Status.RUNNING,
+                expiresAt.plusMillis(1)),
+                "the expired worker must remain fenced out after reclamation");
+        assertTrue(repository.complete(replacement, Status.SUBMITTED, Status.RUNNING,
+                expiresAt.plusMillis(1)));
+    }
+
     @Test
     void concurrentWorkersCannotClaimTheSameExecution() throws Exception {
         UUID executionId = insertExecution("workspace-a", Status.SUBMITTED);
