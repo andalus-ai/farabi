@@ -14,7 +14,7 @@ public final class SemanticQueryContracts {
 
     public enum FieldType { TEXT, DECIMAL, DATE, BOOLEAN }
     public enum Aggregation { SUM, AVG, MIN, MAX, COUNT }
-    public enum Operator { EQ, NE, GT, GTE, LT, LTE, IN, NOT_IN }
+    public enum Operator { EQ, NE, GT, GTE, LT, LTE }
 
     public record FieldRef(String name) {
         public FieldRef { QueryContracts.required(name, "field name"); }
