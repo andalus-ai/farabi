@@ -63,10 +63,21 @@ public final class SemanticQueryPlanCompiler {
 
         List<Field> dimensions = query.dimensions().stream()
                 .map(ref -> requireField(dataset, ref, true)).toList();
-        List<ResolvedMeasure> measures = query.measures().stream()
-                .map(measure -> new ResolvedMeasure(measure, requireField(dataset, measure.field(), false))).toList();
-        List<ResolvedPredicate> predicates = query.predicates().stream()
-                .map(predicate -> new ResolvedPredicate(predicate, requireField(dataset, predicate.field(), false))).toList();
+        List<ResolvedMeasure> measures = query.measures().stream().map(measure -> {
+            Field field = requireField(dataset, measure.field(), false);
+            if (measure.aggregation() != Aggregation.COUNT && !field.aggregatable())
+                throw new IllegalArgumentException("field is not aggregatable: " + measure.field().name());
+            if ((measure.aggregation() == Aggregation.SUM || measure.aggregation() == Aggregation.AVG)
+                    && field.type() != FieldType.DECIMAL)
+                throw new IllegalArgumentException("SUM/AVG require a decimal field: " + measure.field().name());
+            return new ResolvedMeasure(measure, field);
+        }).toList();
+        List<ResolvedPredicate> predicates = query.predicates().stream().map(predicate -> {
+            Field field = requireField(dataset, predicate.field(), false);
+            if (field.type() != predicate.valueType())
+                throw new IllegalArgumentException("predicate type does not match resolved field: " + predicate.field().name());
+            return new ResolvedPredicate(predicate, field);
+        }).toList();
 
         StringBuilder sql = new StringBuilder("SELECT ");
         List<String> selections = new ArrayList<>();
