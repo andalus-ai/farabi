@@ -19,7 +19,7 @@ public final class QueryContracts {
         public Plan { required(sourceId,"sourceId"); required(sql,"sql"); }
     }
 
-    public enum ParameterType { TEXT, DECIMAL, DATE }
+    public enum ParameterType { TEXT, DECIMAL, DATE, BOOLEAN }
 
     /** A typed value bound to a placeholder; never rendered into SQL text. */
     public record QueryParameter(String name, ParameterType type, Object value) {
@@ -31,6 +31,7 @@ public final class QueryContracts {
                 case TEXT -> value instanceof String;
                 case DECIMAL -> value instanceof java.math.BigDecimal;
                 case DATE -> value instanceof java.time.LocalDate;
+                case BOOLEAN -> value instanceof Boolean;
             };
             if (!valid) throw new IllegalArgumentException("parameter value does not match type");
         }
