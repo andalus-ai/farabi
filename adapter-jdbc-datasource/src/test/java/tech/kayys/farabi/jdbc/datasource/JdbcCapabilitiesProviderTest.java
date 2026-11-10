@@ -5,15 +5,14 @@ import static org.junit.jupiter.api.Assertions.*;
 import java.util.Map;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.Test;
-import tech.kayys.farabi.engine.DataSourceContracts.DataSourceDescriptor;
-import tech.kayys.farabi.engine.DataSourceContracts.ProviderKind;
+import tech.kayys.farabi.engine.DataSourceContracts.Descriptor;
 
 class JdbcCapabilitiesProviderTest {
     @Test
     void discoversCapabilitiesFromTheConnectedDriver() {
         JdbcDataSource source = new JdbcDataSource();
         source.setURL("jdbc:h2:mem:capabilities");
-        var descriptor = new DataSourceDescriptor("analytics", "Analytics", ProviderKind.JDBC, true);
+        var descriptor = new Descriptor("analytics", "jdbc", "Analytics", "h2");
         var registry = new JdbcDataSourceRegistry(Map.of(
                 "analytics", new JdbcDataSourceRegistry.Entry(descriptor, source)));
 
