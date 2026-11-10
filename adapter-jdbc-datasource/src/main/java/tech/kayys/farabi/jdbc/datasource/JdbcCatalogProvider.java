@@ -49,7 +49,7 @@ public final class JdbcCatalogProvider implements CatalogProvider {
             List<ColumnMetadata> columns = new ArrayList<>();
             while (rs.next()) {
                 columns.add(new ColumnMetadata(rs.getString("COLUMN_NAME"),
-                        logicalType(rs.getInt("DATA_TYPE")), rs.getInt("NULLABLE") != ResultSet.columnNoNulls));
+                        logicalType(rs.getInt("DATA_TYPE")), rs.getInt("NULLABLE") != java.sql.DatabaseMetaData.columnNoNulls));
             }
             return List.copyOf(columns);
         } catch (SQLException e) {
