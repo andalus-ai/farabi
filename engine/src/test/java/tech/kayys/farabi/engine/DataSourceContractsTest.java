@@ -1,42 +1,41 @@
 package tech.kayys.farabi.engine;
 
-import java.util.EnumSet;
-import java.util.List;
-import java.util.Set;
-import org.junit.jupiter.api.Test;
 import static org.junit.jupiter.api.Assertions.*;
+import java.net.URI;
+import java.time.Instant;
+import java.util.Map;
+import org.junit.jupiter.api.Test;
+import tech.kayys.farabi.engine.DataSourceContracts.*;
 
 class DataSourceContractsTest {
-    @Test void descriptorRequiresStableProviderIdentity() {
-        assertDoesNotThrow(() -> new DataSourceContracts.Descriptor(
-            "warehouse", "postgresql", "Warehouse", "1.0"));
-        assertThrows(IllegalArgumentException.class, () -> new DataSourceContracts.Descriptor(
-            " ", "postgresql", "Warehouse", "1.0"));
-    }
-
-    @Test void capabilitiesAreImmutableAndBounded() {
-        var features = EnumSet.of(DataSourceContracts.Feature.PARAMETERIZED_QUERIES);
-        var capabilities = new DataSourceContracts.Capabilities(features, 1000, 100);
-        features.clear();
-        assertTrue(capabilities.supports(DataSourceContracts.Feature.PARAMETERIZED_QUERIES));
+    @Test
+    void connectionDefinitionKeepsCredentialsAsReferenceAndCopiesProperties() {
+        var properties = new java.util.HashMap<String, String>();
+        properties.put("sslmode", "verify-full");
+        var definition = new ConnectionDefinition(
+                "sales", "workspace-a", "Sales", ProviderKind.JDBC, "jdbc-postgresql",
+                URI.create("jdbc:postgresql://db.internal:5432/sales"), "sales", "public",
+                properties, new SecretReference("secret://sales-db"), true, Instant.EPOCH);
+        properties.put("sslmode", "disable");
+        assertEquals("verify-full", definition.properties().get("sslmode"));
+        assertEquals("secret://sales-db", definition.credential().reference());
         assertThrows(UnsupportedOperationException.class,
-            () -> capabilities.features().clear());
-        assertThrows(IllegalArgumentException.class,
-            () -> new DataSourceContracts.Capabilities(Set.of(), 10, 11));
+                () -> definition.properties().put("x", "y"));
     }
 
-    @Test void relationMetadataRequiresARealRelationKindAndCopiesColumns() {
-        var columns = new java.util.ArrayList<DataSourceContracts.ColumnMetadata>();
-        columns.add(new DataSourceContracts.ColumnMetadata(
-            "revenue", DataSourceContracts.LogicalType.DECIMAL, false));
-        var relation = new DataSourceContracts.RelationMetadata(
-            "sales.orders", "sales", "public", "orders",
-            DataSourceContracts.EntryKind.TABLE, columns);
-        columns.clear();
-        assertEquals(1, relation.columns().size());
-        assertThrows(IllegalArgumentException.class, () ->
-            new DataSourceContracts.RelationMetadata(
-                "sales", null, null, "sales",
-                DataSourceContracts.EntryKind.SCHEMA, List.of()));
+    @Test
+    void rejectsCredentialsEmbeddedInEndpoint() {
+        assertThrows(IllegalArgumentException.class, () -> new ConnectionDefinition(
+                "sales", "workspace-a", "Sales", ProviderKind.JDBC, "jdbc-postgresql",
+                URI.create("https://user:password@db.internal"), null, null, Map.of(),
+                null, true, Instant.EPOCH));
+    }
+
+    @Test
+    void rejectsEndpointQueryAndFragment() {
+        assertThrows(IllegalArgumentException.class, () -> new ConnectionDefinition(
+                "sales", "workspace-a", "Sales", ProviderKind.JDBC, "jdbc-postgresql",
+                URI.create("https://db.internal/path?token=secret"), null, null, Map.of(),
+                null, true, Instant.EPOCH));
     }
 }

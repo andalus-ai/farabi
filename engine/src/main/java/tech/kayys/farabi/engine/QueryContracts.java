@@ -2,6 +2,7 @@ package tech.kayys.farabi.engine;
 
 import java.time.Instant;
 import java.util.Map;
+import java.util.List;
 import java.util.Objects;
 import java.util.UUID;
 
@@ -14,9 +15,40 @@ public final class QueryContracts {
             parameters = Map.copyOf(Objects.requireNonNull(parameters,"parameters"));
         }
     }
-    /** Legacy SQL-only plan retained for existing adapters during migration. */
-    public record Plan(String sourceId, String sql) {
-        public Plan { required(sourceId,"sourceId"); required(sql,"sql"); }
+
+    /** One positional JDBC parameter. Values are bound, never interpolated into SQL. */
+    public record Parameter(int position, Object value, Integer jdbcType) {
+        public Parameter {
+            if (position < 1) throw new IllegalArgumentException("parameter position must be positive");
+            if (value != null && !(value instanceof String || value instanceof Boolean
+                    || value instanceof Byte || value instanceof Short || value instanceof Integer
+                    || value instanceof Long || value instanceof Float || value instanceof Double
+                    || value instanceof java.math.BigDecimal || value instanceof java.math.BigInteger
+                    || value instanceof java.time.LocalDate || value instanceof java.time.LocalTime
+                    || value instanceof java.time.LocalDateTime || value instanceof java.time.OffsetDateTime
+                    || value instanceof java.time.OffsetTime || value instanceof java.sql.Date
+                    || value instanceof java.sql.Time || value instanceof java.sql.Timestamp
+                    || value instanceof java.util.UUID || value instanceof byte[])) {
+                throw new IllegalArgumentException("unsupported query parameter type: " + value.getClass().getName());
+            }
+            if (value instanceof byte[] bytes) value = bytes.clone();
+        }
+        @Override public Object value() { return value instanceof byte[] bytes ? bytes.clone() : value; }
+    }
+
+    public record Plan(String sourceId, String sql, List<Parameter> parameters) {
+        public Plan {
+            required(sourceId,"sourceId"); required(sql,"sql");
+            parameters = List.copyOf(Objects.requireNonNull(parameters,"parameters"));
+            int expected = 1;
+            for (Parameter parameter : parameters) {
+                Objects.requireNonNull(parameter,"parameter");
+                if (parameter.position() != expected++) {
+                    throw new IllegalArgumentException("query parameters must be contiguous and ordered from position 1");
+                }
+            }
+        }
+        public Plan(String sourceId, String sql) { this(sourceId, sql, List.of()); }
     }
 
     public enum ParameterType { TEXT, DECIMAL, DATE }
