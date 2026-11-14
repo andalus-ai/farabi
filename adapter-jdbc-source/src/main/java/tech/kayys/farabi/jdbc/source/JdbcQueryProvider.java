@@ -28,7 +28,7 @@ import tech.kayys.farabi.engine.QueryPorts;
 public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecycle.Provider {
     @FunctionalInterface
     public interface ConnectionFactory {
-        Connection open(String sourceId) throws SQLException;
+        Connection open(String sourceId, String workspaceId, String subjectId) throws SQLException;
     }
 
     private record Job(List<String> columns, List<Map<String, Object>> rows, boolean truncated) {}
@@ -54,8 +54,11 @@ public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecy
 
     @Override public Submission submit(Plan plan) {
         Objects.requireNonNull(plan, "plan");
+        if (plan.workspaceId() == null || plan.subjectId() == null) {
+            throw new SecurityException("governed JDBC execution requires authenticated workspace and subject context");
+        }
         String jobId = UUID.randomUUID().toString();
-        try (Connection connection = connections.open(plan.sourceId())) {
+        try (Connection connection = connections.open(plan.sourceId(), plan.workspaceId(), plan.subjectId())) {
             if (connection == null) throw new IllegalStateException("connection factory returned null");
             connection.setReadOnly(true);
             try (PreparedStatement statement = connection.prepareStatement(

@@ -36,7 +36,7 @@ public final class QueryContracts {
         @Override public Object value() { return value instanceof byte[] bytes ? bytes.clone() : value; }
     }
 
-    public record Plan(String sourceId, String sql, List<Parameter> parameters) {
+    public record Plan(String sourceId, String sql, List<Parameter> parameters, String workspaceId, String subjectId) {
         public Plan {
             required(sourceId,"sourceId"); required(sql,"sql");
             parameters = List.copyOf(Objects.requireNonNull(parameters,"parameters"));
@@ -47,8 +47,18 @@ public final class QueryContracts {
                     throw new IllegalArgumentException("query parameters must be contiguous and ordered from position 1");
                 }
             }
+            if (workspaceId != null) required(workspaceId, "workspaceId");
+            if (subjectId != null) required(subjectId, "subjectId");
+            if ((workspaceId == null) != (subjectId == null)) {
+                throw new IllegalArgumentException("workspaceId and subjectId must be supplied together");
+            }
         }
-        public Plan(String sourceId, String sql) { this(sourceId, sql, List.of()); }
+        /** Compatibility constructor; governed JDBC execution rejects missing context. */
+        public Plan(String sourceId, String sql, List<Parameter> parameters) {
+            this(sourceId, sql, parameters, null, null);
+        }
+        /** Compatibility constructor; governed JDBC execution rejects missing context. */
+        public Plan(String sourceId, String sql) { this(sourceId, sql, List.of(), null, null); }
     }
 
     public enum ParameterType { TEXT, DECIMAL, DATE }
