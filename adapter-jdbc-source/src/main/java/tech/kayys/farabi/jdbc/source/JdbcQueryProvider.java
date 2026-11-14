@@ -18,11 +18,13 @@ import tech.kayys.farabi.engine.QueryPorts;
 /**
  * Synchronous, bounded JDBC query adapter.
  *
- * The injected connection factory must resolve an already-authorized source ID to a
- * configured connection using a read-only database principal. Connection.setReadOnly(true)
- * is only a JDBC hint and is not a substitute for database-enforced least privilege.
- * Authorization and workspace scoping remain engine/runtime duties. SQL must come from
- * Farabi's governed compiler; user values must be represented as Plan parameters.
+ * The injected connection factory receives source, workspace and subject context and
+ * must authorize QUERY before workspace-scoped registry lookup. Plans without both
+ * workspace and subject context are rejected. The host runtime/compiler must populate
+ * those fields from authenticated server identity, never client-supplied identity fields.
+ * The resolved connection must use a database-enforced read-only principal:
+ * Connection.setReadOnly(true) is only a JDBC hint. SQL must come from Farabi's governed
+ * compiler; user values must be represented as Plan parameters.
  * Results are held in a bounded process-local cache; this adapter is not a durable job store.
  */
 public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecycle.Provider {
