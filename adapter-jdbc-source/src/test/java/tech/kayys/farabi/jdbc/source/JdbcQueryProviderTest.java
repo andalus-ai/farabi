@@ -22,7 +22,10 @@ class JdbcQueryProviderTest {
             s.execute("CREATE TABLE IF NOT EXISTS orders (id BIGINT PRIMARY KEY, amount DECIMAL(10,2), note VARCHAR(40))");
             s.execute("MERGE INTO orders KEY(id) VALUES (1, 12.50, 'first'), (2, 25.00, NULL), (3, 37.50, 'third')");
         }
-        provider = new JdbcQueryProvider(sourceId -> {
+        provider = new JdbcQueryProvider((sourceId, workspaceId, subjectId) -> {
+            assertEquals("orders", sourceId);
+            assertEquals("workspace-a", workspaceId);
+            assertEquals("analyst", subjectId);
             Connection delegate = DriverManager.getConnection(url);
             return (Connection) java.lang.reflect.Proxy.newProxyInstance(Connection.class.getClassLoader(),
                     new Class<?>[]{Connection.class}, (proxy, method, args) -> {
@@ -32,7 +35,6 @@ class JdbcQueryProviderTest {
                     });
         }, 100, 50, 25, 20);
     }
-
 
     private static Plan plan(String sql) {
         return new Plan("orders", sql, List.of(), "workspace-a", "analyst");
@@ -44,7 +46,8 @@ class JdbcQueryProviderTest {
     @Test void rejectsPlansWithoutAuthenticatedWorkspaceContext() {
         assertThrows(SecurityException.class, () -> provider.submit(new Plan("orders", "SELECT id FROM orders")));
     }
-\n    @Test void bindsParametersAndReturnsPagedRowsIncludingNulls() {
+
+    @Test void bindsParametersAndReturnsPagedRowsIncludingNulls() {
         var submission = provider.submit(plan(
                 "SELECT id, amount, note FROM orders WHERE id >= ? ORDER BY id",
                 List.of(new Parameter(1, 2L, java.sql.Types.BIGINT))));
@@ -61,22 +64,19 @@ class JdbcQueryProviderTest {
     }
 
     @Test void rejectsNullParameterWithoutJdbcType() {
-        var plan = new Plan("orders", "SELECT id FROM orders WHERE note = ?",
-                List.of(new Parameter(1, null, null)));
-        assertThrows(IllegalArgumentException.class, () -> provider.submit(plan));
+        var invalid = plan("SELECT id FROM orders WHERE note = ?", List.of(new Parameter(1, null, null)));
+        assertThrows(IllegalArgumentException.class, () -> provider.submit(invalid));
     }
 
     @Test void bindsTypedNullParameters() {
-        var submission = provider.submit(new Plan("orders",
-                "SELECT id FROM orders WHERE note = ?",
+        var submission = provider.submit(plan("SELECT id FROM orders WHERE note = ?",
                 List.of(new Parameter(1, null, java.sql.Types.VARCHAR))));
         assertEquals(0, provider.results(submission.providerJobId(), 0, 10).rows().size());
     }
 
     @Test void explicitlyRejectsCancellationForSynchronousExecution() {
-        var submission = provider.submit(new Plan("orders", "SELECT id FROM orders"));
-        assertThrows(UnsupportedOperationException.class,
-                () -> provider.cancel(submission.providerJobId()));
+        var submission = provider.submit(plan("SELECT id FROM orders"));
+        assertThrows(UnsupportedOperationException.class, () -> provider.cancel(submission.providerJobId()));
     }
 
     @Test void rejectsNonContiguousParameterPositions() {
@@ -85,9 +85,9 @@ class JdbcQueryProviderTest {
     }
 
     @Test void reportsWhenConfiguredRowLimitTruncatesResults() {
-        var limited = new JdbcQueryProvider((sourceId, workspaceId, subjectId) -> DriverManager.getConnection(
-                "jdbc:h2:mem:query;DB_CLOSE_DELAY=-1"), 2, 20, 10, 5);
-        var submission = limited.submit(new Plan("orders", "SELECT id FROM orders ORDER BY id"));
+        var limited = new JdbcQueryProvider((sourceId, workspaceId, subjectId) ->
+                DriverManager.getConnection("jdbc:h2:mem:query;DB_CLOSE_DELAY=-1"), 2, 20, 10, 5);
+        var submission = limited.submit(plan("SELECT id FROM orders ORDER BY id"));
         var page = limited.results(submission.providerJobId(), 0, 10);
         assertEquals(2, page.rows().size());
         assertTrue(page.truncated());
@@ -95,13 +95,11 @@ class JdbcQueryProviderTest {
     }
 
     @Test void boundsPageSizeAndEvictsOldCachedJobs() {
-        var bounded = new JdbcQueryProvider(sourceId -> DriverManager.getConnection(
-                "jdbc:h2:mem:query;DB_CLOSE_DELAY=-1"), 100, 20, 10, 1);
-        var first = bounded.submit(new Plan("orders", "SELECT id FROM orders ORDER BY id"));
-        var second = bounded.submit(new Plan("orders", "SELECT id FROM orders ORDER BY id"));
-        assertThrows(IllegalArgumentException.class,
-                () -> bounded.results(second.providerJobId(), 0, 11));
-        assertThrows(IllegalArgumentException.class,
-                () -> bounded.results(first.providerJobId(), 0, 1));
+        var bounded = new JdbcQueryProvider((sourceId, workspaceId, subjectId) ->
+                DriverManager.getConnection("jdbc:h2:mem:query;DB_CLOSE_DELAY=-1"), 100, 20, 10, 1);
+        var first = bounded.submit(plan("SELECT id FROM orders ORDER BY id"));
+        var second = bounded.submit(plan("SELECT id FROM orders ORDER BY id"));
+        assertThrows(IllegalArgumentException.class, () -> bounded.results(second.providerJobId(), 0, 11));
+        assertThrows(IllegalArgumentException.class, () -> bounded.results(first.providerJobId(), 0, 1));
     }
 }
