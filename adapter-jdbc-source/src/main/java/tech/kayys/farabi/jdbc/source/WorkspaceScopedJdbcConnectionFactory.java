@@ -37,6 +37,9 @@ public final class WorkspaceScopedJdbcConnectionFactory implements JdbcQueryProv
         authorizer.authorize(workspaceId, subjectId, sourceId, Action.QUERY);
         ConnectionDefinition definition = registry.find(sourceId, workspaceId)
                 .orElseThrow(() -> new SecurityException("data source is not available in the authorized workspace"));
+        if (!sourceId.equals(definition.sourceId()) || !workspaceId.equals(definition.workspaceId())) {
+            throw new SecurityException("connection registry returned a source outside the requested scope");
+        }
         if (definition.providerKind() != ProviderKind.JDBC
                 || !JdbcSourceProvider.PROVIDER_KEY.equals(definition.providerKey())) {
             throw new IllegalArgumentException("source is not configured for the generic JDBC provider");
