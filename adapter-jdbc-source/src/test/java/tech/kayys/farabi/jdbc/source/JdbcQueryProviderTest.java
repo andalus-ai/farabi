@@ -33,8 +33,19 @@ class JdbcQueryProviderTest {
         }, 100, 50, 25, 20);
     }
 
-    @Test void bindsParametersAndReturnsPagedRowsIncludingNulls() {
-        var submission = provider.submit(new Plan("orders",
+
+    private static Plan plan(String sql) {
+        return new Plan("orders", sql, List.of(), "workspace-a", "analyst");
+    }
+    private static Plan plan(String sql, List<Parameter> parameters) {
+        return new Plan("orders", sql, parameters, "workspace-a", "analyst");
+    }
+
+    @Test void rejectsPlansWithoutAuthenticatedWorkspaceContext() {
+        assertThrows(SecurityException.class, () -> provider.submit(new Plan("orders", "SELECT id FROM orders")));
+    }
+\n    @Test void bindsParametersAndReturnsPagedRowsIncludingNulls() {
+        var submission = provider.submit(plan(
                 "SELECT id, amount, note FROM orders WHERE id >= ? ORDER BY id",
                 List.of(new Parameter(1, 2L, java.sql.Types.BIGINT))));
         assertEquals(Status.SUCCEEDED, provider.status(submission.providerJobId()).status());
@@ -74,7 +85,7 @@ class JdbcQueryProviderTest {
     }
 
     @Test void reportsWhenConfiguredRowLimitTruncatesResults() {
-        var limited = new JdbcQueryProvider(sourceId -> DriverManager.getConnection(
+        var limited = new JdbcQueryProvider((sourceId, workspaceId, subjectId) -> DriverManager.getConnection(
                 "jdbc:h2:mem:query;DB_CLOSE_DELAY=-1"), 2, 20, 10, 5);
         var submission = limited.submit(new Plan("orders", "SELECT id FROM orders ORDER BY id"));
         var page = limited.results(submission.providerJobId(), 0, 10);
