@@ -46,9 +46,8 @@ class AllowlistedJdbcConnectionPolicyTest {
     @Test
     void rejectsQueryOverridesAndUnsupportedProperties() {
         var policy = new AllowlistedJdbcConnectionPolicy("db.example.test");
-        assertThrows(SecurityException.class, () -> policy.validateAndApply(
-                definition("jdbc:postgresql://db.example.test:5432/warehouse?sslmode=disable", true),
-                new Properties()));
+        assertThrows(IllegalArgumentException.class, () ->
+                definition("jdbc:postgresql://db.example.test:5432/warehouse?sslmode=disable", true));
         Properties properties = new Properties();
         properties.setProperty("socketFactory", "attacker.Driver");
         assertThrows(IllegalArgumentException.class, () -> policy.validateAndApply(
