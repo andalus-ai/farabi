@@ -1,6 +1,6 @@
 # M2 — Multi-source data foundation
 
-**Status:** Initial engine contracts, governed registry use cases, generic JDBC metadata discovery and a bounded synchronous JDBC query adapter are committed on `feature/m2-multisource-foundation`. Runtime wiring, durable/asynchronous execution and real PostgreSQL/MySQL integration remain outstanding.
+**Status:** Initial engine contracts, governed registry use cases, generic JDBC metadata discovery and a bounded synchronous JDBC query adapter are committed on `feature/m2-multisource-foundation`. Persistent source-definition storage and initial Quarkus JDBC provider composition are now present. Numu-backed authorization, authenticated resource endpoints, pooling, durable/asynchronous execution and real PostgreSQL/MySQL integration remain outstanding.
 
 ## Objective
 
@@ -18,6 +18,10 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 - `QueryContracts.Plan` now supports ordered, typed positional parameters; JDBC uses `PreparedStatement` binding and requires an explicit JDBC type for SQL NULL.
 - `QueryLifecycle.ResultPage` preserves nullable values and exposes a `truncated` flag.
 - `JdbcQueryProvider` implements the existing `QueryPorts.Executor` and `QueryLifecycle.Provider` contracts for bounded synchronous query execution, read-only connection mode, 30-second statement timeout, fetch-size/result/page limits, process-local LRU result retention and result paging.
+- `JdbcConnectionRegistry` persists provider-neutral source definitions and non-secret connection properties in the Farabi metadata database. It scopes every read/list/delete by workspace, stores secret references only, and relies on a composite `(workspace_id, source_id)` key. Migration `V22__farabi_data_sources.sql` creates the source and property tables.
+- Quarkus now composes the new `adapter-jdbc-source` provider, JDBC-backed registry, secret resolver, and fail-closed outbound policy. PostgreSQL and MySQL endpoints must use explicitly allowlisted hosts; TLS certificate/hostname verification is forced; only username/password driver properties are accepted. Secret resolution returns a mutable `char[]` for wiping.
+- The previous static Hikari source-map wiring was removed because it bypassed the workspace-scoped provider-neutral registry and depended on an obsolete adapter contract. The current connection opener uses DriverManager (no connection pool yet); add a pool keyed by immutable source identity after registry/secret rotation lifecycle is designed.
+- Runtime authorization currently remains deny-by-default until Numu-backed identity is installed. The JDBC query lifecycle provider is composed with `WorkspaceScopedJdbcConnectionFactory`, but no public query endpoint or authenticated Quarkus principal adapter is claimed in this batch. Database migrations must be applied before enabling source-registry use.
 - `QueryContracts.Plan` carries workspace and subject context. `JdbcQueryProvider` rejects plans without both values. `ExecutionContextCompiler` decorates the semantic compiler and overwrites any context emitted by that compiler with the workspace/subject on the application request, while rejecting source mismatches. This is safe only when the host runtime constructs `Request` from authenticated server identity; the request DTO must not accept workspace or subject from clients. `WorkspaceScopedJdbcConnectionFactory` authorizes `Action.QUERY` before registry lookup, resolves by `(sourceId, workspaceId)`, validates the returned identity and workspace, rejects non-JDBC or non-read-only definitions, then delegates connection opening to the secret-backed factory. The plan context must be populated from authenticated server-side identity, never client-supplied workspace or subject fields.
 
 ## Security invariants
@@ -51,12 +55,16 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 
 ### M2-C — Runtime connection lifecycle
 
+- Persistent JDBC source-definition storage and initial Quarkus provider composition are now committed. Remaining: production Numu authorization, authenticated resource endpoints, connection pooling/rotation lifecycle, audit, and migration automation.
+
 - Persist source definitions separately from query execution metadata.
 - Resolve secret references only at adapter boundaries.
 - Add create/list/test/discover endpoints with authenticated workspace context.
 - Add TLS validation, timeouts, connection limits and audit events.
 
 ### M2-D — End-to-end validation
+
+- Add end-to-end Quarkus tests that prove authenticated identity injection and deny cross-workspace access before metadata or query execution.
 
 - Prove two independent sources can be registered in one workspace.
 - Prove cross-workspace lookup and discovery are denied.
