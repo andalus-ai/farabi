@@ -34,6 +34,15 @@ public final class JdbcSourceProvider implements Provider {
 
     @Override public String providerKey() { return PROVIDER_KEY; }
 
+    /** Opens a provider-owned connection for a separately governed execution adapter. */
+    public Connection openConnection(ConnectionDefinition definition) throws SQLException {
+        Objects.requireNonNull(definition, "definition");
+        Connection connection = connections.open(definition);
+        if (connection == null) throw new IllegalStateException("JDBC connection factory returned null");
+        if (definition.readOnly()) connection.setReadOnly(true);
+        return connection;
+    }
+
     @Override public CapabilitySet capabilities(ConnectionDefinition definition) {
         return withConnection(definition, connection -> {
             DatabaseMetaData metadata = connection.getMetaData();
