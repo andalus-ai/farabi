@@ -32,6 +32,18 @@ class DataSourceContractsTest {
     }
 
     @Test
+    void rejectsCredentialsAndDriverOverridesEmbeddedInJdbcEndpoint() {
+        assertThrows(IllegalArgumentException.class, () -> new ConnectionDefinition(
+                "sales", "workspace-a", "Sales", ProviderKind.JDBC, "jdbc",
+                URI.create("jdbc:postgresql://user:password@db.internal:5432/sales"), null, null,
+                Map.of(), null, true, Instant.EPOCH));
+        assertThrows(IllegalArgumentException.class, () -> new ConnectionDefinition(
+                "sales", "workspace-a", "Sales", ProviderKind.JDBC, "jdbc",
+                URI.create("jdbc:mysql://db.internal:3306/sales?sslMode=DISABLED"), null, null,
+                Map.of(), null, true, Instant.EPOCH));
+    }
+
+    @Test
     void rejectsEndpointQueryAndFragment() {
         assertThrows(IllegalArgumentException.class, () -> new ConnectionDefinition(
                 "sales", "workspace-a", "Sales", ProviderKind.JDBC, "jdbc-postgresql",
