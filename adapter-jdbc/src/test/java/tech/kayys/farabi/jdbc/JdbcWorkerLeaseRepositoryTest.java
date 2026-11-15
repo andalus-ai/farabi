@@ -21,7 +21,7 @@ import org.testcontainers.junit.jupiter.Testcontainers;
 import tech.kayys.farabi.engine.QueryContracts.Status;
 import tech.kayys.farabi.engine.WorkerLeases.Lease;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class JdbcWorkerLeaseRepositoryTest {
     @Container
     static final PostgreSQLContainer<?> POSTGRES =
