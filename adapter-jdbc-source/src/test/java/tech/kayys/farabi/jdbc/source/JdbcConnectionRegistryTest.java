@@ -7,6 +7,7 @@ import java.time.Instant;
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
+import java.util.UUID;
 import org.h2.jdbcx.JdbcDataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -20,7 +21,7 @@ class JdbcConnectionRegistryTest {
     @BeforeEach
     void setUp() throws Exception {
         JdbcDataSource source = new JdbcDataSource();
-        source.setURL("jdbc:h2:mem:registry;DB_CLOSE_DELAY=-1");
+        source.setURL("jdbc:h2:mem:registry-" + UUID.randomUUID() + ";DB_CLOSE_DELAY=-1");
         try (var connection = source.getConnection(); var statement = connection.createStatement()) {
             statement.execute("""
                     CREATE TABLE farabi_data_sources (
