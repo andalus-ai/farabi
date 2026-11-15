@@ -50,8 +50,8 @@ public final class DataSourceContracts {
             URI networkEndpoint = endpoint;
             if ("jdbc".equalsIgnoreCase(endpoint.getScheme())) {
                 String nested = endpoint.getRawSchemeSpecificPart();
-                if (nested == null || !(nested.startsWith("postgresql://") || nested.startsWith("mysql://"))) {
-                    throw new IllegalArgumentException("unsupported JDBC endpoint");
+                if (nested == null || nested.isBlank()) {
+                    throw new IllegalArgumentException("JDBC endpoint is required");
                 }
                 networkEndpoint = URI.create(nested);
             }
