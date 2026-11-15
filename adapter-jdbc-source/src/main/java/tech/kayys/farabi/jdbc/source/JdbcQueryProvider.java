@@ -67,7 +67,14 @@ public final class JdbcQueryProvider implements QueryPorts.Executor, QueryLifecy
                     plan.sql(), ResultSet.TYPE_FORWARD_ONLY, ResultSet.CONCUR_READ_ONLY)) {
                 statement.setMaxRows(Math.addExact(maxRows, 1));
                 statement.setQueryTimeout(30);
-                statement.setFetchSize(fetchSize);
+                // Fetch size is a driver hint, not a correctness or safety control. Some
+                // JDBC drivers (including H2) reject non-default values; row limits remain
+                // enforced independently with setMaxRows and the bounded result buffer.
+                try {
+                    statement.setFetchSize(fetchSize);
+                } catch (SQLException unsupportedFetchHint) {
+                    // Continue with the driver's default fetch behavior.
+                }
                 bind(statement, plan.parameters());
                 try (ResultSet result = statement.executeQuery()) {
                     ResultSetMetaData metadata = result.getMetaData();
