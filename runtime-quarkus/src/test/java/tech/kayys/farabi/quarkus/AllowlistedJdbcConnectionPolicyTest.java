@@ -23,11 +23,15 @@ class AllowlistedJdbcConnectionPolicyTest {
         postgres.setProperty("user", "reader");
         policy.validateAndApply(definition("jdbc:postgresql://db.example.test:5432/warehouse", true), postgres);
         assertEquals("verify-full", postgres.getProperty("sslmode"));
+        assertEquals("10", postgres.getProperty("connectTimeout"));
+        assertEquals("60", postgres.getProperty("socketTimeout"));
 
         Properties mysql = new Properties();
         mysql.setProperty("user", "reader");
         policy.validateAndApply(definition("jdbc:mysql://db.example.test:3306/warehouse", true), mysql);
         assertEquals("VERIFY_IDENTITY", mysql.getProperty("sslMode"));
+        assertEquals("10000", mysql.getProperty("connectTimeout"));
+        assertEquals("60000", mysql.getProperty("socketTimeout"));
     }
 
     @Test
