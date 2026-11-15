@@ -77,10 +77,12 @@ public final class JdbcConnectionRegistry implements ConnectionRegistry {
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, sourceId);
             statement.setString(2, workspaceId);
+            StoredDefinition stored;
             try (ResultSet rows = statement.executeQuery()) {
                 if (!rows.next()) return Optional.empty();
-                return Optional.of(readDefinition(connection, rows));
+                stored = readStoredDefinition(rows);
             }
+            return Optional.of(toDefinition(connection, stored));
         } catch (SQLException failure) {
             throw new IllegalStateException("find data source failed", failure);
         }
@@ -95,11 +97,13 @@ public final class JdbcConnectionRegistry implements ConnectionRegistry {
         try (Connection connection = dataSource.getConnection();
              PreparedStatement statement = connection.prepareStatement(sql)) {
             statement.setString(1, workspaceId);
+            List<StoredDefinition> stored = new ArrayList<>();
             try (ResultSet rows = statement.executeQuery()) {
-                List<ConnectionDefinition> result = new ArrayList<>();
-                while (rows.next()) result.add(readDefinition(connection, rows));
-                return List.copyOf(result);
+                while (rows.next()) stored.add(readStoredDefinition(rows));
             }
+            List<ConnectionDefinition> result = new ArrayList<>(stored.size());
+            for (StoredDefinition definition : stored) result.add(toDefinition(connection, definition));
+            return List.copyOf(result);
         } catch (SQLException failure) {
             throw new IllegalStateException("list data sources failed", failure);
         }
@@ -119,28 +123,36 @@ public final class JdbcConnectionRegistry implements ConnectionRegistry {
         }
     }
 
-    private ConnectionDefinition readDefinition(Connection connection, ResultSet row) throws SQLException {
-        String sourceId = row.getString("source_id");
-        String workspaceId = row.getString("workspace_id");
+    private ConnectionDefinition toDefinition(Connection connection, StoredDefinition row) throws SQLException {
         Map<String, String> properties = new LinkedHashMap<>();
         try (PreparedStatement statement = connection.prepareStatement(
                 "SELECT property_key, property_value FROM farabi_data_source_properties "
                         + "WHERE source_id=? AND workspace_id=? ORDER BY property_key")) {
-            statement.setString(1, sourceId);
-            statement.setString(2, workspaceId);
+            statement.setString(1, row.sourceId());
+            statement.setString(2, row.workspaceId());
             try (ResultSet values = statement.executeQuery()) {
                 while (values.next()) properties.put(values.getString(1), values.getString(2));
             }
         }
-        String credential = row.getString("credential_ref");
-        Timestamp created = row.getTimestamp("created_at");
-        return new ConnectionDefinition(sourceId, workspaceId, row.getString("display_name"),
-                ProviderKind.valueOf(row.getString("provider_kind")), row.getString("provider_key"),
-                URI.create(row.getString("endpoint")), row.getString("catalog_name"),
-                row.getString("schema_name"), properties,
-                credential == null ? null : new SecretReference(credential),
-                row.getBoolean("read_only"), created.toInstant());
+        return new ConnectionDefinition(row.sourceId(), row.workspaceId(), row.displayName(),
+                row.providerKind(), row.providerKey(), row.endpoint(), row.catalog(), row.schema(),
+                properties, row.credential() == null ? null : new SecretReference(row.credential()),
+                row.readOnly(), row.createdAt());
     }
+
+    private static StoredDefinition readStoredDefinition(ResultSet row) throws SQLException {
+        String credential = row.getString("credential_ref");
+        return new StoredDefinition(row.getString("source_id"), row.getString("workspace_id"),
+                row.getString("display_name"), ProviderKind.valueOf(row.getString("provider_kind")),
+                row.getString("provider_key"), URI.create(row.getString("endpoint")),
+                row.getString("catalog_name"), row.getString("schema_name"), credential,
+                row.getBoolean("read_only"), row.getTimestamp("created_at").toInstant());
+    }
+
+    private record StoredDefinition(
+            String sourceId, String workspaceId, String displayName, ProviderKind providerKind,
+            String providerKey, URI endpoint, String catalog, String schema, String credential,
+            boolean readOnly, Instant createdAt) {}
 
     private static void bindDefinition(PreparedStatement statement, ConnectionDefinition definition)
             throws SQLException {
