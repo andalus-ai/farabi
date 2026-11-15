@@ -45,11 +45,11 @@ public class JdbcSourceRuntime {
             if (!secretResolvers.isResolvable()) {
                 throw new IllegalStateException("no deployment SecretResolver is configured");
             }
-            String value = secretResolvers.get().resolve(reference);
-            if (value == null || value.isBlank()) {
+            char[] value = secretResolvers.get().resolve(reference);
+            if (value == null || value.length == 0) {
                 throw new IllegalStateException("configured JDBC secret could not be resolved");
             }
-            return value.toCharArray();
+            return value;
         };
         var connections = new SecretBackedJdbcConnectionFactory(
                 secrets, new AllowlistedJdbcConnectionPolicy(allowedHosts),
