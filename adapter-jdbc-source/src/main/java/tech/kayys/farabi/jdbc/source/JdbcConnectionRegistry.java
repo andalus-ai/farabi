@@ -172,7 +172,7 @@ public final class JdbcConnectionRegistry implements ConnectionRegistry {
     private static boolean isUniqueViolation(SQLException failure) {
         for (SQLException current = failure; current != null; current = current.getNextException()) {
             String state = current.getSQLState();
-            if (state != null && state.startsWith("23")) return true;
+            if ("23505".equals(state) || current.getErrorCode() == 1062) return true;
         }
         return false;
     }
