@@ -45,8 +45,12 @@ final class AllowlistedJdbcConnectionPolicy implements ConnectionPolicy {
         }
         if (jdbcUrl.startsWith("jdbc:postgresql://")) {
             properties.setProperty("sslmode", "verify-full");
+            properties.setProperty("connectTimeout", "10");
+            properties.setProperty("socketTimeout", "60");
         } else {
             properties.setProperty("sslMode", "VERIFY_IDENTITY");
+            properties.setProperty("connectTimeout", "10000");
+            properties.setProperty("socketTimeout", "60000");
         }
     }
 }
