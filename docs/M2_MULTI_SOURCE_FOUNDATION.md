@@ -44,7 +44,7 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 - Basic dialect identification is present; vendor-specific dialect behavior and PostgreSQL/MySQL Testcontainers contract tests remain to be implemented.
 - Limitations: this first executor is synchronous, cannot cancel a query after submission, and retains results only in a bounded process-local cache. It is not a durable job system and must not be advertised as asynchronous or horizontally scalable.
 - `ExecutionContextCompilerTest` covers trusted-context propagation, overwriting compiler-supplied context, and source mismatch rejection. This tests the engine boundary, not the Quarkus authentication integration.
-- Next: wire the secret-backed factory and workspace-scoped query factory into the host runtime with a concrete fail-closed policy and database-enforced least-privilege credentials; add PostgreSQL/MySQL integration tests; persist source definitions; and wire metadata discovery through authenticated workspace context. The adapter now enforces scope at its boundary, but the host runtime/compiler must still prove that Plan workspace/subject values originate from the authenticated principal. A durable worker-backed executor should replace the synchronous adapter before production async workloads.
+- Runtime composition and persistent source storage are now present. Remaining adapter work: real PostgreSQL/MySQL metadata and query contract tests, vendor-specific dialect behavior, connection pooling/rotation, and a durable worker-backed executor before production async workloads.
 
 ### M2-B — Dremio provider alignment
 
@@ -57,19 +57,19 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 
 - Persistent JDBC source-definition storage and initial Quarkus provider composition are now committed. Remaining: production Numu authorization, authenticated resource endpoints, connection pooling/rotation lifecycle, audit, and migration automation.
 
-- Persist source definitions separately from query execution metadata.
-- Resolve secret references only at adapter boundaries.
-- Add create/list/test/discover endpoints with authenticated workspace context.
-- Add TLS validation, timeouts, connection limits and audit events.
+- Complete Numu-backed authorization and authenticated create/list/test/discover endpoints.
+- Apply migrations automatically or through a documented deployment migration process.
+- Add a pooled connection lifecycle keyed by immutable source identity, including secret rotation and bounded connection limits.
+- Add source lifecycle audit events and operational health reporting.
 
 ### M2-D — End-to-end validation
 
 - Add end-to-end Quarkus tests that prove authenticated identity injection and deny cross-workspace access before metadata or query execution.
 
-- Prove two independent sources can be registered in one workspace.
-- Prove cross-workspace lookup and discovery are denied.
-- Prove query execution still passes through the governed query use case.
-- Verify driver-specific metadata and type mappings against real databases.
+- Prove two independent sources can be registered in one workspace through authenticated resource endpoints.
+- Prove cross-workspace lookup, discovery and query execution are denied before source lookup or connection open.
+- Prove authenticated principal context reaches the governed query use case and compiled plan without client override.
+- Verify driver-specific metadata, TLS, read-only principal behavior and type mappings against real PostgreSQL/MySQL instances.
 
 ## Deliberately deferred
 
@@ -81,4 +81,4 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 
 ## Verification status
 
-The GitHub source changes have been committed to the feature branch. Maven compilation, unit tests and integration tests have **not** been run in this environment. The repository CI workflow runs on branch pushes, but no successful run has been confirmed here. Do not treat this batch as build-verified or production-ready.
+The source changes are committed to the feature branch. GitHub Actions has progressed through several previously exposed baseline/build issues; the latest run is being used to verify the fetch-size compatibility fix and the full reactor. No successful full-reactor CI run is confirmed yet. Tests have not been run locally. Do not treat this batch as production-ready: authorization remains deny-by-default, the new registry migration must be applied, and the runtime does not yet pool connections.
