@@ -39,8 +39,17 @@ public final class JdbcSourceProvider implements Provider {
         Objects.requireNonNull(definition, "definition");
         Connection connection = connections.open(definition);
         if (connection == null) throw new IllegalStateException("JDBC connection factory returned null");
-        if (definition.readOnly()) connection.setReadOnly(true);
-        return connection;
+        try {
+            if (definition.readOnly()) connection.setReadOnly(true);
+            return connection;
+        } catch (SQLException | RuntimeException failure) {
+            try {
+                connection.close();
+            } catch (SQLException closeFailure) {
+                failure.addSuppressed(closeFailure);
+            }
+            throw failure;
+        }
     }
 
     @Override public CapabilitySet capabilities(ConnectionDefinition definition) {
