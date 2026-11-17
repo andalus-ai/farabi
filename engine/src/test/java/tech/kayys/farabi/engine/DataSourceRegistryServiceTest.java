@@ -11,7 +11,7 @@ import tech.kayys.farabi.engine.DataSourcePorts.*;
 class DataSourceRegistryServiceTest {
     private ConnectionDefinition definition() {
         return new ConnectionDefinition("sales", "workspace-a", "Sales", ProviderKind.JDBC,
-                "jdbc-test", URI.create("jdbc:test://localhost/db"), null, null, Map.of(),
+                "jdbc-test", URI.create("jdbc:postgresql://localhost:5432/db"), null, null, Map.of(),
                 null, true, Instant.EPOCH);
     }
 

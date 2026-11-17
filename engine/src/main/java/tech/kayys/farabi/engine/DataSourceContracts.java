@@ -47,8 +47,16 @@ public final class DataSourceContracts {
                     && !"http".equalsIgnoreCase(endpoint.getScheme())) {
                 throw new IllegalArgumentException("unsupported endpoint scheme");
             }
-            if (endpoint.getUserInfo() != null || endpoint.getRawQuery() != null
-                    || endpoint.getRawFragment() != null) {
+            URI networkEndpoint = endpoint;
+            if ("jdbc".equalsIgnoreCase(endpoint.getScheme())) {
+                String nested = endpoint.getRawSchemeSpecificPart();
+                if (nested == null || nested.isBlank()) {
+                    throw new IllegalArgumentException("JDBC endpoint is required");
+                }
+                networkEndpoint = URI.create(nested);
+            }
+            if (networkEndpoint.getUserInfo() != null || networkEndpoint.getRawQuery() != null
+                    || networkEndpoint.getRawFragment() != null) {
                 throw new IllegalArgumentException("endpoint must not contain credentials, query, or fragment");
             }
             properties = Map.copyOf(Objects.requireNonNull(properties, "properties"));

@@ -2,7 +2,7 @@ package tech.kayys.farabi.engine;
 
 import java.util.List;
 import java.util.Objects;
-import tech.kayys.farabi.engine.DataSourceContracts.ConnectionDefinition;
+import tech.kayys.farabi.engine.DataSourceContracts.*;
 import tech.kayys.farabi.engine.DataSourcePorts.*;
 
 /** Governed application boundary for registering and discovering workspace data sources. */
