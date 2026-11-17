@@ -37,17 +37,21 @@ Allow Farabi to manage multiple workspace-scoped analytical connections through 
 
 ## Numu integration findings and design gate
 
-The current Numu repository exposes an `AuthCheckService` gRPC contract (`CheckPermission`, `CheckPermissions`, `ResolvePrincipal`) and an identity application authorization model. The gRPC proto currently lives under `identity/numou-identity-adapter/src/main/proto`, inside the deployable identity adapter rather than a small reusable contract artifact. The check request carries principal type/ID, requested path and permission, but does not carry a typed tenant/workspace context.
+Numu's current `AuthCheckService` supports single/bulk permission checks and principal resolution, but its protobuf remains inside the deployable `numou-identity-adapter`. The permission-check RPC currently has no explicit tenant binding, and its current implementation resolves effective permissions from the requested path. Do not assume that a tenant-looking path alone proves tenant membership or principal binding.
 
-Farabi must not copy that proto or depend on the full deployable identity adapter as an application library. Before wiring a production Farabi Numu client:
+A Numu-side contract proposal is now documented at [AUTH-CHECK-SERVICE-TENANT-SCOPE-CONTRACT.md](https://github.com/andalus-ai/numu/blob/main/docs/architecture/AUTH-CHECK-SERVICE-TENANT-SCOPE-CONTRACT.md). It proposes:
 
-- Extract/version the auth-check protobuf contract as a reusable Numu contract artifact (or publish an equivalent stable, versioned API).
-- Define the canonical resource path encoding for tenant + Farabi workspace + source. The identity service must verify membership and inherited grants for that exact scope; Farabi must not invent a path convention.
-- Define permission names for source registration, viewing, testing, metadata discovery, querying and deletion, including whether permissions are source-scoped or workspace-scoped.
-- Bind the Numu client to the authenticated Farabi request principal, not a body/header identity supplied by the caller. Fail closed on timeout, malformed identity, unavailable Numu, or unknown permission.
-- Keep Farabi's `ConnectionAuthorizer` as the engine boundary. The Numu-specific adapter belongs in `runtime-quarkus`; do not add a reverse dependency from Numu into Farabi.
+- Canonical tenant-first paths: `tenant.<tenant-id>.<capability>.<resource-type>.<resource-id>`, with segment-boundary inheritance and no caller-supplied paths.
+- Explicit tenant binding in single and bulk permission checks, verified against principal tenant binding or active tenant membership.
+- Workload authentication and delegated-check policy so a consumer cannot ask Numu to authorize arbitrary principal IDs.
+- Consumer-owned permission vocabulary. Farabi's proposed permissions are `farabi.source.register`, `farabi.source.view`, `farabi.source.test`, `farabi.source.discover`, `farabi.source.query`, and `farabi.source.delete`.
+- A reusable, versioned protobuf contract artifact separate from the deployable Identity adapter.
 
-Until these contracts are published and integrated, the existing Quarkus authorizer intentionally denies all source operations. This is safer than substituting Quarkus role names or unverified JWT claims for Numu's authoritative authorization decision.
+This is a **contract proposal**, not an implemented Numu API release. Farabi must not integrate against it as though the server already enforces these guarantees. The next cross-repository implementation gate is to extract/version the protobuf contract, implement tenant and workload enforcement in Numu, and add server tests for tenant mismatch, membership, inheritance and spoofed delegated principal requests.
+
+Farabi's runtime must then implement the Numu client behind the existing engine `ConnectionAuthorizer` port. It must derive principal, tenant and workspace from verified server-side identity, construct canonical paths from validated identifiers, and fail closed on timeout, unavailable service, malformed response or identity mismatch. Authorization must happen before source lookup, metadata discovery, secret resolution, connection opening or query execution.
+
+Until the Numu contract is released and enforced, the existing Quarkus authorizer intentionally denies all source operations. Do not substitute local role names or unverified JWT claims for Numu's authoritative decision.
 
 ## Next implementation batches
 
@@ -72,7 +76,7 @@ Until these contracts are published and integrated, the existing Quarkus authori
 ### M2-C — Runtime connection lifecycle
 
 - Persistent JDBC source-definition storage and initial Quarkus provider composition are committed. Remaining: production Numu authorization, authenticated resource endpoints, connection pooling/rotation lifecycle, audit, and migration automation.
-- Complete the Numu contract extraction/design gate above, then implement the authenticated Numu authorization adapter.
+- Complete the Numu contract extraction and tenant/workload enforcement gate above, then implement the authenticated Numu authorization adapter.
 - Add authenticated create/list/test/discover/delete endpoints; derive principal, tenant and workspace from the verified identity context.
 - Apply migrations automatically or through a documented deployment migration process.
 - Add a pooled connection lifecycle keyed by immutable source identity, including secret rotation and bounded connection limits.
