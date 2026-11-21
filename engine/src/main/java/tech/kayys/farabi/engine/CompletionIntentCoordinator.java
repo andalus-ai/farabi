@@ -97,19 +97,18 @@ public final class CompletionIntentCoordinator {
                     throw new IllegalArgumentException(
                             "reconciled decisions require authoritative reconciliation evidence");
                 }
-                return;
-            }
-
-            Outcome outcome = reconciliation.outcome();
-            boolean valid = switch (decision) {
-                case COMPLETED -> outcome == Outcome.APPLIED;
-                case RETRY_ELIGIBLE -> outcome == Outcome.NOT_APPLIED;
-                case UNRESOLVED -> outcome == Outcome.UNRESOLVED;
-                default -> false;
-            };
-            if (!valid) {
-                throw new IllegalArgumentException(
-                        "reconciliation outcome does not match completion decision");
+            } else {
+                Outcome outcome = reconciliation.outcome();
+                boolean valid = switch (decision) {
+                    case COMPLETED -> outcome == Outcome.APPLIED;
+                    case RETRY_ELIGIBLE -> outcome == Outcome.NOT_APPLIED;
+                    case UNRESOLVED -> outcome == Outcome.UNRESOLVED;
+                    default -> false;
+                };
+                if (!valid) {
+                    throw new IllegalArgumentException(
+                            "reconciliation outcome does not match completion decision");
+                }
             }
         }
 
