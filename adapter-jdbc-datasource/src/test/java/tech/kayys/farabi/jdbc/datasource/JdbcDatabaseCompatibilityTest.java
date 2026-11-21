@@ -49,7 +49,7 @@ class JdbcDatabaseCompatibilityTest {
             statement.executeUpdate("INSERT INTO fact_sales (id, amount) VALUES (1, 12.50), (2, 22.00)");
         }
 
-        var descriptor = new DataSourceDescriptor(sourceId, sourceId, ProviderKind.JDBC, true);
+        var descriptor = new Descriptor(sourceId, "jdbc", sourceId, "integration-test");
         var registry = new JdbcDataSourceRegistry(Map.of(
                 sourceId, new JdbcDataSourceRegistry.Entry(descriptor, source)));
         var catalog = new JdbcCatalogProvider(registry);

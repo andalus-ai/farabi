@@ -2,39 +2,41 @@ package tech.kayys.farabi.engine;
 
 import java.util.List;
 import java.util.Optional;
-import tech.kayys.farabi.engine.DataSourceContracts.*;
+import tech.kayys.farabi.engine.DataSourceContracts.CatalogEntry;
+import tech.kayys.farabi.engine.DataSourceContracts.ColumnMetadata;
+import tech.kayys.farabi.engine.DataSourceContracts.Descriptor;
+import tech.kayys.farabi.engine.QueryContracts.ParameterizedPlan;
+import tech.kayys.farabi.engine.QueryContracts.Submission;
 
-/** Outbound ports for connection management and source-provider adapters. */
+/**
+ * Compatibility ports for datasource integrations.
+ *
+ * <p>The canonical provider and catalog contracts live in DataSourceContracts;
+ * query execution reuses the engine's parameterized plan and submission types.</p>
+ */
 public final class DataSourcePorts {
     private DataSourcePorts() {}
 
-    public interface ConnectionRegistry {
-        boolean register(ConnectionDefinition definition);
-        Optional<ConnectionDefinition> find(String sourceId, String workspaceId);
-        List<ConnectionDefinition> list(String workspaceId);
-        boolean remove(String sourceId, String workspaceId);
+    public interface Registry {
+        Optional<Descriptor> find(String sourceId);
+        List<Descriptor> list();
     }
 
-    /** Adapter factory selected by providerKey; implementations must not bypass engine authorization. */
-    public interface Provider {
-        String providerKey();
-        CapabilitySet capabilities(ConnectionDefinition definition);
-        SourceHealth testConnection(ConnectionDefinition definition);
-        List<String> catalogs(ConnectionDefinition definition);
-        List<String> schemas(ConnectionDefinition definition, String catalog);
-        List<CatalogEntry> datasets(ConnectionDefinition definition, String catalog, String schema);
-        List<ColumnMetadata> columns(ConnectionDefinition definition, String catalog, String schema, String dataset);
+    public interface CatalogProvider {
+        List<CatalogEntry> listObjects(String sourceId, String catalog, String schemaPattern);
+        List<ColumnMetadata> listColumns(String sourceId, String catalog, String schema, String objectName);
     }
 
+    /** Reports source capabilities; capability hints are never authorization decisions. */
     @FunctionalInterface
     public interface ProviderRegistry {
         Optional<Provider> find(String providerKey);
     }
 
-    /** Resolves secret references at the adapter boundary; secret material must never enter domain objects. */
+    /** Executes a plan only after the engine has applied authorization and policy validation. */
     @FunctionalInterface
-    public interface SecretResolver {
-        char[] resolve(String secretReference);
+    public interface QueryExecutor {
+        Submission execute(ParameterizedPlan plan);
     }
 
     @FunctionalInterface

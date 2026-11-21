@@ -19,6 +19,41 @@ public final class JdbcDatasetStorageInventoryAuditLog implements DatasetStorage
     private final DataSource source;
     public JdbcDatasetStorageInventoryAuditLog(DataSource source) { this.source = Objects.requireNonNull(source); }
 
+
+    @Override public List<Event> recent(String workspaceId, UUID jobId, int limit) {
+        if (workspaceId == null || workspaceId.isBlank()) throw new IllegalArgumentException("workspaceId required");
+        Objects.requireNonNull(jobId, "jobId");
+        if (limit < 1 || limit > 1000) throw new IllegalArgumentException("limit must be 1..1000");
+        String sql = "SELECT id,workspace_id,job_id,actor_id,event_type,attempt,report_id,error_code,occurred_at "
+            + "FROM farabi_storage_inventory_audit WHERE workspace_id=? AND job_id=? "
+            + "ORDER BY occurred_at DESC LIMIT ?";
+        try (Connection connection = source.getConnection();
+             PreparedStatement statement = connection.prepareStatement(sql)) {
+            statement.setString(1, workspaceId);
+            statement.setObject(2, jobId);
+            statement.setInt(3, limit);
+            try (ResultSet rows = statement.executeQuery()) {
+                List<Event> events = new ArrayList<>();
+                while (rows.next()) {
+                    Timestamp occurredAt = rows.getTimestamp("occurred_at");
+                    events.add(new Event(
+                        rows.getObject("id", UUID.class),
+                        rows.getString("workspace_id"),
+                        rows.getObject("job_id", UUID.class),
+                        rows.getString("actor_id"),
+                        EventType.valueOf(rows.getString("event_type")),
+                        rows.getInt("attempt"),
+                        rows.getObject("report_id", UUID.class),
+                        rows.getString("error_code"),
+                        occurredAt.toInstant()));
+                }
+                return List.copyOf(events);
+            }
+        } catch (SQLException e) {
+            throw new IllegalStateException("read storage inventory audit events failed", e);
+        }
+    }
+
     @Override public void append(Event event) {
         String sql = "INSERT INTO farabi_storage_inventory_audit(id,workspace_id,job_id,actor_id,event_type,attempt,report_id,error_code,occurred_at) VALUES(?,?,?,?,?,?,?,?,?) ON CONFLICT(job_id,event_type,attempt) DO NOTHING";
         try (Connection c=source.getConnection(); PreparedStatement p=c.prepareStatement(sql)) {
