@@ -33,29 +33,29 @@ public final class DataSourceRegistryService {
 
     public SourceHealth testConnection(String sourceId, String workspaceId, String subjectId) {
         ConnectionDefinition definition = authorized(sourceId, workspaceId, subjectId, Action.TEST);
-        return new SourceHealth(provider(definition).health(), Instant.now(), null);
+        return provider(definition).health(definition);
     }
 
     public List<String> catalogs(String sourceId, String workspaceId, String subjectId) {
         ConnectionDefinition definition = authorized(sourceId, workspaceId, subjectId, Action.DISCOVER);
-        return provider(definition).catalog().catalogs().stream().map(CatalogEntry::name).toList();
+        return provider(definition).catalog(definition).catalogs().stream().map(CatalogEntry::name).toList();
     }
 
     public List<String> schemas(String sourceId, String workspaceId, String catalog, String subjectId) {
         ConnectionDefinition definition = authorized(sourceId, workspaceId, subjectId, Action.DISCOVER);
-        return provider(definition).catalog().schemas(catalog).stream().map(CatalogEntry::name).toList();
+        return provider(definition).catalog(definition).schemas(catalog).stream().map(CatalogEntry::name).toList();
     }
 
     public List<CatalogEntry> datasets(String sourceId, String workspaceId, String catalog,
                                        String schema, String subjectId) {
         ConnectionDefinition definition = authorized(sourceId, workspaceId, subjectId, Action.DISCOVER);
-        return List.copyOf(provider(definition).catalog().relations(catalog, schema));
+        return List.copyOf(provider(definition).catalog(definition).relations(catalog, schema));
     }
 
     public List<ColumnMetadata> columns(String sourceId, String workspaceId, String catalog,
                                         String schema, String dataset, String subjectId) {
         ConnectionDefinition definition = authorized(sourceId, workspaceId, subjectId, Action.DISCOVER);
-        RelationMetadata relation = provider(definition).catalog().describe(dataset);
+        RelationMetadata relation = provider(definition).catalog(definition).describe(dataset);
         if (!Objects.equals(catalog, relation.catalog()) || !Objects.equals(schema, relation.schema())) {
             throw new IllegalArgumentException("dataset does not belong to the requested catalog and schema");
         }
