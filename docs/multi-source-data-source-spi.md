@@ -59,6 +59,7 @@ metadata behavior must be verified against supported database versions.
 - The JDBC source adapter is distinct from the JDBC persistence adapter.
 - The Dremio adapter must converge on the common source/catalog/capability contracts without
   replacing its existing durable asynchronous query-job lifecycle.
+- DremioSourceProvider now bridges the existing REST executor and job lifecycle into DataSourceContracts.Provider. Its catalog is still supplied by runtime composition; the Dremio REST catalog implementation and runtime registration remain outstanding. Dremio parameter binding is explicitly unsupported and must not be advertised.
 - JDBC's synchronous execution path must be integrated with durable Farabi job management
   without weakening deadlines, cancellation, audit or workspace authorization.
 - No cross-source joins or distributed federation are implemented. Use Dremio/Toba or Trino
