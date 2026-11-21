@@ -31,7 +31,7 @@ class DatasetStorageInventoryWorkerTest {
             public boolean complete(UUID i, UUID t, UUID report, Instant n) {
                 completedToken[0] = t; completedReport[0] = report; return true;
             }
-            public boolean fail(UUID i, UUID t, String c, String m, Instant r, Instant n) { fail("unexpected failure"); return false; }
+            public boolean fail(UUID i, UUID t, String c, String m, Instant r, Instant n) { org.junit.jupiter.api.Assertions.fail("unexpected failure"); return false; }
         };
         List<Report> saved = new java.util.ArrayList<>();
         DatasetStorageInventoryService inventory = new DatasetStorageInventoryService(
