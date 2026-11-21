@@ -12,7 +12,6 @@ import tech.kayys.farabi.engine.DataSourceContracts.Feature;
 import tech.kayys.farabi.engine.DataSourceContracts.Health;
 import tech.kayys.farabi.engine.DataSourceContracts.ProviderKind;
 import tech.kayys.farabi.engine.DataSourceContracts.SourceHealth;
-import tech.kayys.farabi.engine.QueryContracts.Submission;
 import tech.kayys.farabi.engine.QueryPorts;
 import tech.kayys.farabi.engine.QueryLifecycle;
 
