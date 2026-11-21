@@ -2,16 +2,23 @@ package tech.kayys.farabi.jdbc;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import java.lang.reflect.InvocationTargetException;
+import java.lang.reflect.Proxy;
 import java.sql.Connection;
+import java.sql.PreparedStatement;
+import java.sql.SQLException;
 import java.sql.DriverManager;
 import java.sql.Statement;
 import java.time.Duration;
 import java.time.Instant;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.UUID;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import javax.sql.DataSource;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
@@ -173,6 +180,245 @@ class JdbcWorkerLeaseRepositoryTest {
     }
 
     @Test
+    void repeatedConcurrentTakeoversHaveOneWinnerAndMonotonicFences() throws Exception {
+        UUID executionId = insertExecution("workspace-a", Status.RUNNING);
+        int contenders = 8;
+        int takeoverRounds = 5;
+        ExecutorService workers = Executors.newFixedThreadPool(contenders);
+        Lease previousWinner = null;
+
+        try {
+            for (int round = 0; round < takeoverRounds; round++) {
+                Instant claimTime = NOW.plus(TTL.multipliedBy(round));
+                CountDownLatch ready = new CountDownLatch(contenders);
+                CountDownLatch start = new CountDownLatch(1);
+                List<java.util.concurrent.Future<java.util.Optional<Lease>>> attempts =
+                        new ArrayList<>();
+
+                for (int worker = 0; worker < contenders; worker++) {
+                    String workerId = "round-" + round + "-worker-" + worker;
+                    attempts.add(workers.submit(() -> {
+                        ready.countDown();
+                        if (!start.await(10, TimeUnit.SECONDS)) {
+                            throw new AssertionError("claim wave did not start");
+                        }
+                        return repository.claim(executionId, "workspace-a",
+                                workerId, claimTime, TTL);
+                    }));
+                }
+
+                assertTrue(ready.await(10, TimeUnit.SECONDS),
+                        "all contenders should be ready for round " + round);
+                start.countDown();
+
+                List<Lease> winners = new ArrayList<>();
+                for (var attempt : attempts) {
+                    attempt.get(10, TimeUnit.SECONDS).ifPresent(winners::add);
+                }
+
+                assertEquals(1, winners.size(),
+                        "exactly one worker must win takeover round " + round);
+                Lease winner = winners.getFirst();
+                assertEquals(round + 1L, winner.fence(),
+                        "fencing token must increase exactly once per successful takeover");
+
+                if (previousWinner != null) {
+                    assertFalse(repository.renew(previousWinner, claimTime, TTL),
+                            "previous owner must not renew after takeover round " + round);
+                    assertFalse(repository.complete(previousWinner, Status.RUNNING,
+                            Status.SUCCEEDED, claimTime),
+                            "previous owner must not complete after takeover round " + round);
+                }
+                previousWinner = winner;
+
+                try (Connection connection = dataSource.getConnection();
+                     var statement = connection.prepareStatement(
+                             "SELECT lease_owner, lease_fence FROM farabi_query_executions WHERE id=?")) {
+                    statement.setObject(1, executionId);
+                    try (var result = statement.executeQuery()) {
+                        assertTrue(result.next());
+                        assertEquals(winner.workerId(), result.getString("lease_owner"));
+                        assertEquals(round + 1L, result.getLong("lease_fence"));
+                    }
+                }
+            }
+        } finally {
+            workers.shutdownNow();
+        }
+    }
+
+    @Test
+    void failedCompletionStatementPreservesExecutionAndLeaseForRetry() throws Exception {
+        UUID executionId = insertExecution("workspace-a", Status.RUNNING);
+        Lease lease = repository.claim(executionId, "workspace-a", "worker-a", NOW, TTL)
+                .orElseThrow();
+        Instant attemptedAt = NOW.plusSeconds(5);
+
+        try (Connection connection = dataSource.getConnection();
+             Statement statement = connection.createStatement()) {
+            statement.execute("""
+                    CREATE FUNCTION reject_successful_execution_completion()
+                    RETURNS trigger AS $
+                    BEGIN
+                        IF NEW.status = 'SUCCEEDED' THEN
+                            RAISE EXCEPTION 'simulated completion persistence failure';
+                        END IF;
+                        RETURN NEW;
+                    END;
+                    $ LANGUAGE plpgsql
+                    """);
+            statement.execute("""
+                    CREATE TRIGGER reject_successful_execution_completion
+                    BEFORE UPDATE ON farabi_query_executions
+                    FOR EACH ROW EXECUTE FUNCTION reject_successful_execution_completion()
+                    """);
+        }
+
+        try {
+            assertThrows(IllegalStateException.class,
+                    () -> repository.complete(lease, Status.RUNNING, Status.SUCCEEDED, attemptedAt));
+
+            try (Connection connection = dataSource.getConnection();
+                 var statement = connection.prepareStatement("""
+                         SELECT status, lease_owner, lease_fence, lease_expires_at, updated_at
+                         FROM farabi_query_executions WHERE id=?
+                         """)) {
+                statement.setObject(1, executionId);
+                try (var result = statement.executeQuery()) {
+                    assertTrue(result.next());
+                    assertEquals(Status.RUNNING.name(), result.getString("status"));
+                    assertEquals("worker-a", result.getString("lease_owner"));
+                    assertEquals(1L, result.getLong("lease_fence"));
+                    assertEquals(NOW.plus(TTL),
+                            result.getTimestamp("lease_expires_at").toInstant());
+                    assertEquals(NOW, result.getTimestamp("updated_at").toInstant());
+                }
+            }
+        } finally {
+            try (Connection connection = dataSource.getConnection();
+                 Statement statement = connection.createStatement()) {
+                statement.execute("DROP TRIGGER IF EXISTS reject_successful_execution_completion ON farabi_query_executions");
+                statement.execute("DROP FUNCTION IF EXISTS reject_successful_execution_completion()");
+            }
+        }
+
+        assertTrue(repository.complete(lease, Status.RUNNING, Status.SUCCEEDED, attemptedAt),
+                "the unchanged lease should remain usable after the transient DB failure");
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     SELECT status, lease_owner, lease_fence, lease_expires_at, updated_at
+                     FROM farabi_query_executions WHERE id=?
+                     """)) {
+            statement.setObject(1, executionId);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next());
+                assertEquals(Status.SUCCEEDED.name(), result.getString("status"));
+                assertNull(result.getString("lease_owner"));
+                assertEquals(1L, result.getLong("lease_fence"));
+                assertNull(result.getTimestamp("lease_expires_at"));
+                assertEquals(attemptedAt, result.getTimestamp("updated_at").toInstant());
+            }
+        }
+    }
+
+
+    @Test
+    void lostCompletionAcknowledgementRequiresReadingPersistedOutcome() throws Exception {
+        UUID executionId = insertExecution("workspace-a", Status.RUNNING);
+        Lease lease = repository.claim(executionId, "workspace-a", "worker-a", NOW, TTL)
+                .orElseThrow();
+        Instant completedAt = NOW.plusSeconds(5);
+
+        JdbcWorkerLeaseRepository ambiguousRepository =
+                new JdbcWorkerLeaseRepository(dataSourceThatLosesCompletionAcknowledgement(dataSource));
+
+        assertThrows(IllegalStateException.class,
+                () -> ambiguousRepository.complete(lease, Status.RUNNING,
+                        Status.SUCCEEDED, completedAt),
+                "the caller should observe a transport-like failure after the database update commits");
+
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     SELECT status, lease_owner, lease_fence, lease_expires_at, updated_at
+                     FROM farabi_query_executions WHERE id=?
+                     """)) {
+            statement.setObject(1, executionId);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next());
+                assertEquals(Status.SUCCEEDED.name(), result.getString("status"),
+                        "the committed database state is authoritative despite the lost acknowledgement");
+                assertNull(result.getString("lease_owner"));
+                assertEquals(1L, result.getLong("lease_fence"));
+                assertNull(result.getTimestamp("lease_expires_at"));
+                assertEquals(completedAt, result.getTimestamp("updated_at").toInstant());
+            }
+        }
+
+        assertFalse(repository.complete(lease, Status.RUNNING, Status.SUCCEEDED,
+                        completedAt.plusSeconds(1)),
+                "retrying the old lease must be a no-op after the persisted terminal outcome is observed");
+        try (Connection connection = dataSource.getConnection();
+             var statement = connection.prepareStatement(
+                     "SELECT status, updated_at FROM farabi_query_executions WHERE id=?")) {
+            statement.setObject(1, executionId);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next());
+                assertEquals(Status.SUCCEEDED.name(), result.getString("status"));
+                assertEquals(completedAt, result.getTimestamp("updated_at").toInstant(),
+                        "a rejected retry must not rewrite the committed completion timestamp");
+            }
+        }
+    }
+
+
+    @Test
+    void unavailableReconciliationReadLeavesCompletionOutcomeUnresolvedUntilRetry() throws Exception {
+        UUID executionId = insertExecution("workspace-a", Status.RUNNING);
+        Lease lease = repository.claim(executionId, "workspace-a", "worker-a", NOW, TTL)
+                .orElseThrow();
+        Instant completedAt = NOW.plusSeconds(5);
+        DataSource faultingDataSource =
+                dataSourceThatLosesCompletionAcknowledgementAndFirstReconciliationRead(dataSource);
+        JdbcWorkerLeaseRepository ambiguousRepository =
+                new JdbcWorkerLeaseRepository(faultingDataSource);
+
+        assertThrows(IllegalStateException.class,
+                () -> ambiguousRepository.complete(lease, Status.RUNNING,
+                        Status.SUCCEEDED, completedAt));
+
+        assertThrows(SQLException.class, () -> {
+            try (Connection connection = faultingDataSource.getConnection();
+                 var statement = connection.prepareStatement("""
+                         SELECT status, lease_owner, lease_fence, lease_expires_at, updated_at
+                         FROM farabi_query_executions WHERE id=?
+                         """)) {
+                statement.setObject(1, executionId);
+                statement.executeQuery();
+            }
+        }, "a failed reconciliation read must not be interpreted as success or failure");
+
+        try (Connection connection = faultingDataSource.getConnection();
+             var statement = connection.prepareStatement("""
+                     SELECT status, lease_owner, lease_fence, lease_expires_at, updated_at
+                     FROM farabi_query_executions WHERE id=?
+                     """)) {
+            statement.setObject(1, executionId);
+            try (var result = statement.executeQuery()) {
+                assertTrue(result.next());
+                assertEquals(Status.SUCCEEDED.name(), result.getString("status"));
+                assertNull(result.getString("lease_owner"));
+                assertEquals(1L, result.getLong("lease_fence"));
+                assertNull(result.getTimestamp("lease_expires_at"));
+                assertEquals(completedAt, result.getTimestamp("updated_at").toInstant());
+            }
+        }
+
+        assertFalse(repository.complete(lease, Status.RUNNING, Status.SUCCEEDED,
+                        completedAt.plusSeconds(1)),
+                "only after reading the persisted terminal state can the old completion be treated as already committed");
+    }
+
+    @Test
     void claimIsWorkspaceScopedAndOnlyTargetsActiveExecutions() throws Exception {
         UUID executionId = insertExecution("workspace-a", Status.RUNNING);
 
@@ -189,6 +435,113 @@ class JdbcWorkerLeaseRepositoryTest {
 
         assertTrue(repository.claim(executionId, "workspace-a", "worker-x",
                 NOW.plusSeconds(60), TTL).isEmpty());
+    }
+
+
+
+    private static DataSource dataSourceThatLosesCompletionAcknowledgementAndFirstReconciliationRead(
+            DataSource delegate) {
+        AtomicBoolean loseAcknowledgement = new AtomicBoolean(true);
+        AtomicBoolean loseFirstReconciliationRead = new AtomicBoolean(true);
+        return (DataSource) Proxy.newProxyInstance(
+                DataSource.class.getClassLoader(),
+                new Class<?>[] {DataSource.class},
+                (proxy, method, args) -> {
+                    Object value = invokeDelegate(delegate, method, args);
+                    if (!method.getName().equals("getConnection") || !(value instanceof Connection connection)) {
+                        return value;
+                    }
+                    return Proxy.newProxyInstance(
+                            Connection.class.getClassLoader(),
+                            new Class<?>[] {Connection.class},
+                            (connectionProxy, connectionMethod, connectionArgs) -> {
+                                Object statementValue =
+                                        invokeDelegate(connection, connectionMethod, connectionArgs);
+                                if (!connectionMethod.getName().equals("prepareStatement")
+                                        || connectionArgs == null
+                                        || connectionArgs.length == 0
+                                        || !(connectionArgs[0] instanceof String sql)
+                                        || !(statementValue instanceof PreparedStatement preparedStatement)) {
+                                    return statementValue;
+                                }
+                                boolean completion = sql.startsWith(
+                                        "UPDATE farabi_query_executions SET status=");
+                                boolean reconciliation = sql.startsWith("SELECT status, lease_owner, lease_fence");
+                                if (!completion && !reconciliation) {
+                                    return statementValue;
+                                }
+                                return Proxy.newProxyInstance(
+                                        PreparedStatement.class.getClassLoader(),
+                                        new Class<?>[] {PreparedStatement.class},
+                                        (statementProxy, statementMethod, statementArgs) -> {
+                                            Object result = invokeDelegate(
+                                                    preparedStatement, statementMethod, statementArgs);
+                                            if (completion
+                                                    && statementMethod.getName().equals("executeUpdate")
+                                                    && loseAcknowledgement.compareAndSet(true, false)) {
+                                                throw new SQLException(
+                                                        "simulated lost acknowledgement after auto-commit");
+                                            }
+                                            if (reconciliation
+                                                    && statementMethod.getName().equals("executeQuery")
+                                                    && loseFirstReconciliationRead.compareAndSet(true, false)) {
+                                                throw new SQLException(
+                                                        "simulated temporary reconciliation read failure");
+                                            }
+                                            return result;
+                                        });
+                            });
+                });
+    }
+
+    private static DataSource dataSourceThatLosesCompletionAcknowledgement(DataSource delegate) {
+        AtomicBoolean loseAcknowledgement = new AtomicBoolean(true);
+        return (DataSource) Proxy.newProxyInstance(
+                DataSource.class.getClassLoader(),
+                new Class<?>[] {DataSource.class},
+                (proxy, method, args) -> {
+                    Object value = invokeDelegate(delegate, method, args);
+                    if (!method.getName().equals("getConnection") || !(value instanceof Connection connection)) {
+                        return value;
+                    }
+                    return Proxy.newProxyInstance(
+                            Connection.class.getClassLoader(),
+                            new Class<?>[] {Connection.class},
+                            (connectionProxy, connectionMethod, connectionArgs) -> {
+                                Object statementValue =
+                                        invokeDelegate(connection, connectionMethod, connectionArgs);
+                                if (!connectionMethod.getName().equals("prepareStatement")
+                                        || connectionArgs == null
+                                        || connectionArgs.length == 0
+                                        || !(connectionArgs[0] instanceof String sql)
+                                        || !sql.startsWith("UPDATE farabi_query_executions SET status=")
+                                        || !(statementValue instanceof PreparedStatement preparedStatement)) {
+                                    return statementValue;
+                                }
+                                return Proxy.newProxyInstance(
+                                        PreparedStatement.class.getClassLoader(),
+                                        new Class<?>[] {PreparedStatement.class},
+                                        (statementProxy, statementMethod, statementArgs) -> {
+                                            Object result = invokeDelegate(
+                                                    preparedStatement, statementMethod, statementArgs);
+                                            if (statementMethod.getName().equals("executeUpdate")
+                                                    && loseAcknowledgement.compareAndSet(true, false)) {
+                                                throw new SQLException(
+                                                        "simulated lost acknowledgement after auto-commit");
+                                            }
+                                            return result;
+                                        });
+                            });
+                });
+    }
+
+    private static Object invokeDelegate(Object target, java.lang.reflect.Method method, Object[] args)
+            throws Throwable {
+        try {
+            return method.invoke(target, args);
+        } catch (InvocationTargetException exception) {
+            throw exception.getCause();
+        }
     }
 
     private UUID insertExecution(String workspace, Status status) throws Exception {
