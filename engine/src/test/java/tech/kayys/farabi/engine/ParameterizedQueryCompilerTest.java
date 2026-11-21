@@ -36,9 +36,8 @@ class ParameterizedQueryCompilerTest {
         var plan = compiler.compileParameterized(new Query("orders", "revenue", List.of("month"), List.of(), 10));
         assertEquals("toba", plan.sourceId());
         assertEquals("ansi", plan.dialectId());
-        assertTrue(plan.sqlTemplate().contains("\"order_month\""));
-        assertTrue(plan.sqlTemplate().contains("GROUP BY \"order_month\""));
-        assertFalse(plan.sqlTemplate().contains("DATE_TRUNC"));
+        assertTrue(plan.sqlTemplate().contains("DATE_TRUNC('MONTH', \"order_month\")"));
+        assertTrue(plan.sqlTemplate().contains("GROUP BY DATE_TRUNC"));
         assertTrue(plan.parameters().isEmpty());
     }
 
