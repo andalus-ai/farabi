@@ -27,6 +27,8 @@ A runtime may compose different implementations behind these ports. The engine d
 create connections or store credentials. Capabilities are advisory metadata, not policy
 decisions and not proof that an operation is safe.
 
+Provider operations receive the persisted `ConnectionDefinition` on each call. This lets a provider registry hold one generic adapter per provider key while the adapter resolves endpoint-specific resources from the requested workspace-scoped source. Do not store a mutable 'current source' on a singleton provider.
+
 ## JDBC adapter
 
 The customer-database adapter lives in the Maven module `adapter-jdbc-source`, with artifact
