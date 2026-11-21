@@ -4,29 +4,43 @@ import java.util.List;
 import java.util.Optional;
 import tech.kayys.farabi.engine.DataSourceContracts.*;
 
-/** Replaceable ports for source registration, catalog discovery and bounded query execution. */
+/** Outbound ports for connection management and source-provider adapters. */
 public final class DataSourcePorts {
     private DataSourcePorts() {}
 
-    public interface Registry {
-        Optional<DataSourceDescriptor> find(String sourceId);
-        List<DataSourceDescriptor> list();
+    public interface ConnectionRegistry {
+        boolean register(ConnectionDefinition definition);
+        Optional<ConnectionDefinition> find(String sourceId, String workspaceId);
+        List<ConnectionDefinition> list(String workspaceId);
+        boolean remove(String sourceId, String workspaceId);
     }
 
-    public interface CatalogProvider {
-        List<CatalogObject> listObjects(String sourceId, String catalog, String schemaPattern);
-        List<ColumnMetadata> listColumns(String sourceId, String catalog, String schema, String objectName);
+    /** Adapter factory selected by providerKey; implementations must not bypass engine authorization. */
+    public interface Provider {
+        String providerKey();
+        CapabilitySet capabilities(ConnectionDefinition definition);
+        SourceHealth testConnection(ConnectionDefinition definition);
+        List<String> catalogs(ConnectionDefinition definition);
+        List<String> schemas(ConnectionDefinition definition, String catalog);
+        List<CatalogEntry> datasets(ConnectionDefinition definition, String catalog, String schema);
+        List<ColumnMetadata> columns(ConnectionDefinition definition, String catalog, String schema, String dataset);
     }
 
-    /** Reports capabilities of the configured source; values are hints, not authorization. */
     @FunctionalInterface
-    public interface CapabilitiesProvider {
-        DataSourceCapabilities capabilities(String sourceId);
+    public interface ProviderRegistry {
+        Optional<Provider> find(String providerKey);
     }
 
-    /** Executes only plans that have already passed Farabi authorization and policy validation. */
+    /** Resolves secret references at the adapter boundary; secret material must never enter domain objects. */
     @FunctionalInterface
-    public interface QueryExecutor {
-        QueryResult execute(QueryRequest request);
+    public interface SecretResolver {
+        char[] resolve(String secretReference);
     }
+
+    @FunctionalInterface
+    public interface ConnectionAuthorizer {
+        void authorize(String workspaceId, String subjectId, String sourceId, Action action);
+    }
+
+    public enum Action { REGISTER, VIEW, TEST, DISCOVER, QUERY, DELETE }
 }
