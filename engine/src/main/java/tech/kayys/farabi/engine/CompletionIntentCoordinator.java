@@ -92,20 +92,24 @@ public final class CompletionIntentCoordinator {
     public record Result(Decision decision, CompletionReconciler.Result reconciliation) {
         public Result {
             Objects.requireNonNull(decision, "decision");
-            if ((decision == Decision.RETRY_ELIGIBLE || decision == Decision.UNRESOLVED)
-                    != (reconciliation != null)) {
-                throw new IllegalArgumentException(
-                        "reconciliation evidence is required only for reconciled decisions");
+            if (reconciliation == null) {
+                if (decision == Decision.RETRY_ELIGIBLE || decision == Decision.UNRESOLVED) {
+                    throw new IllegalArgumentException(
+                            "reconciled decisions require authoritative reconciliation evidence");
+                }
+                return;
             }
-            if (reconciliation != null) {
-                if (decision == Decision.RETRY_ELIGIBLE
-                        && reconciliation.outcome() != Outcome.NOT_APPLIED) {
-                    throw new IllegalArgumentException("retry eligibility requires NOT_APPLIED");
-                }
-                if (decision == Decision.UNRESOLVED
-                        && reconciliation.outcome() != Outcome.UNRESOLVED) {
-                    throw new IllegalArgumentException("unresolved decision requires UNRESOLVED");
-                }
+
+            Outcome outcome = reconciliation.outcome();
+            boolean valid = switch (decision) {
+                case COMPLETED -> outcome == Outcome.APPLIED;
+                case RETRY_ELIGIBLE -> outcome == Outcome.NOT_APPLIED;
+                case UNRESOLVED -> outcome == Outcome.UNRESOLVED;
+                default -> false;
+            };
+            if (!valid) {
+                throw new IllegalArgumentException(
+                        "reconciliation outcome does not match completion decision");
             }
         }
 
