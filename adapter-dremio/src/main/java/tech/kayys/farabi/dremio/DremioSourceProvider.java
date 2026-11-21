@@ -1,13 +1,17 @@
 package tech.kayys.farabi.dremio;
 
+import java.time.Instant;
 import java.util.Objects;
 import java.util.Set;
 import tech.kayys.farabi.engine.DataSourceContracts;
 import tech.kayys.farabi.engine.DataSourceContracts.Catalog;
 import tech.kayys.farabi.engine.DataSourceContracts.Capabilities;
+import tech.kayys.farabi.engine.DataSourceContracts.ConnectionDefinition;
 import tech.kayys.farabi.engine.DataSourceContracts.Descriptor;
 import tech.kayys.farabi.engine.DataSourceContracts.Feature;
 import tech.kayys.farabi.engine.DataSourceContracts.Health;
+import tech.kayys.farabi.engine.DataSourceContracts.ProviderKind;
+import tech.kayys.farabi.engine.DataSourceContracts.SourceHealth;
 import tech.kayys.farabi.engine.QueryPorts;
 import tech.kayys.farabi.engine.QueryLifecycle;
 
@@ -46,27 +50,22 @@ public final class DremioSourceProvider implements DataSourceContracts.Provider 
         }
     }
 
-    @Override
     public Descriptor descriptor() {
         return descriptor;
     }
 
-    @Override
     public Capabilities capabilities() {
         return CAPABILITIES;
     }
 
-    @Override
     public Catalog catalog() {
         return catalog;
     }
 
-    @Override
     public QueryPorts.Executor executor() {
         return executor;
     }
 
-    @Override
     public QueryPorts.ParameterizedExecutor parameterizedExecutor() {
         return plan -> {
             Objects.requireNonNull(plan, "plan");
@@ -75,14 +74,63 @@ public final class DremioSourceProvider implements DataSourceContracts.Provider 
         };
     }
 
-    @Override
     public QueryLifecycle.Provider lifecycle() {
         return lifecycle;
     }
 
     /** A configured adapter is not proof that the remote endpoint is reachable. */
-    @Override
     public Health health() {
         return Health.UNKNOWN;
+    }
+
+    @Override
+    public Descriptor descriptor(ConnectionDefinition definition) {
+        requireDefinition(definition);
+        return descriptor;
+    }
+
+    @Override
+    public Capabilities capabilities(ConnectionDefinition definition) {
+        requireDefinition(definition);
+        return capabilities();
+    }
+
+    @Override
+    public Catalog catalog(ConnectionDefinition definition) {
+        requireDefinition(definition);
+        return catalog();
+    }
+
+    @Override
+    public QueryPorts.Executor executor(ConnectionDefinition definition) {
+        requireDefinition(definition);
+        return executor();
+    }
+
+    @Override
+    public QueryPorts.ParameterizedExecutor parameterizedExecutor(ConnectionDefinition definition) {
+        requireDefinition(definition);
+        return parameterizedExecutor();
+    }
+
+    @Override
+    public QueryLifecycle.Provider lifecycle(ConnectionDefinition definition) {
+        requireDefinition(definition);
+        return lifecycle();
+    }
+
+    @Override
+    public SourceHealth health(ConnectionDefinition definition) {
+        requireDefinition(definition);
+        return new SourceHealth(health(), Instant.now(), null);
+    }
+
+    private void requireDefinition(ConnectionDefinition definition) {
+        Objects.requireNonNull(definition, "definition");
+        if (definition.providerKind() != ProviderKind.DREMIO
+                || !"dremio".equalsIgnoreCase(definition.providerKey())
+                || !descriptor.sourceId().equals(definition.sourceId())) {
+            throw new IllegalArgumentException("connection definition does not match this Dremio provider");
+        }
     }
 }
