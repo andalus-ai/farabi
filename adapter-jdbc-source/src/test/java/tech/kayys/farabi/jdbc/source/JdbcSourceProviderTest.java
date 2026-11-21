@@ -35,7 +35,7 @@ class JdbcSourceProviderTest {
                 .anyMatch(table -> table.name().equalsIgnoreCase("ORDERS")));
         var columns = provider.columns(definition, null, "ANALYTICS", "ORDERS");
         assertEquals(5, columns.size());
-        assertEquals("INTEGER", columns.stream().filter(c -> c.name().equals("ID")).findFirst().orElseThrow().logicalType().name());
+        assertEquals("INTEGER", columns.stream().filter(c -> c.name().equals("ID")).findFirst().orElseThrow().type().name());
         assertEquals("DECIMAL", columns.stream().filter(c -> c.name().equals("AMOUNT")).findFirst().orElseThrow().logicalType().name());
         assertEquals("JSON", columns.stream().filter(c -> c.name().equals("PAYLOAD")).findFirst().orElseThrow().logicalType().name());
     }
