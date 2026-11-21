@@ -20,7 +20,7 @@ import tech.kayys.farabi.engine.CompletionReconciliation;
 import tech.kayys.farabi.engine.CompletionReconciliation.*;
 import tech.kayys.farabi.engine.QueryContracts.Status;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class JdbcCompletionReconciliationReaderTest {
     @Container
     static final PostgreSQLContainer<?> POSTGRES =
