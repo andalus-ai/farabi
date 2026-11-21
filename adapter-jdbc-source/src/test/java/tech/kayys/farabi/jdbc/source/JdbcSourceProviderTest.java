@@ -40,6 +40,19 @@ class JdbcSourceProviderTest {
         assertEquals("JSON", columns.stream().filter(c -> c.name().equals("PAYLOAD")).findFirst().orElseThrow().type().name());
     }
 
+    @Test void exposesProviderNeutralCatalogAndRoundTripsRelationIds() {
+        assertEquals("orders", provider.descriptor(definition).sourceId());
+        assertTrue(provider.capabilities(definition).supports(Feature.SCHEMAS));
+        var catalog = provider.catalog(definition);
+        var orders = catalog.relations(null, "ANALYTICS").stream()
+                .filter(relation -> relation.name().equalsIgnoreCase("ORDERS"))
+                .findFirst().orElseThrow();
+        var described = catalog.describe(orders.id());
+        assertEquals("ORDERS", described.name());
+        assertEquals(EntryKind.TABLE, described.kind());
+        assertTrue(described.columns().stream().anyMatch(column -> column.type() == LogicalType.JSON));
+    }
+
     @Test void reportsCapabilitiesAndHealth() {
         assertEquals("h2", provider.capabilitySet(definition).dialectId());
         assertEquals(Health.AVAILABLE, provider.testConnection(definition).health());
