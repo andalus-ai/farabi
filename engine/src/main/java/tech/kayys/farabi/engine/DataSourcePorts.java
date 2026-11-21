@@ -4,22 +4,27 @@ import java.util.List;
 import java.util.Optional;
 import tech.kayys.farabi.engine.DataSourceContracts.CatalogEntry;
 import tech.kayys.farabi.engine.DataSourceContracts.ColumnMetadata;
+import tech.kayys.farabi.engine.DataSourceContracts.ConnectionDefinition;
 import tech.kayys.farabi.engine.DataSourceContracts.Descriptor;
+import tech.kayys.farabi.engine.DataSourceContracts.Provider;
 import tech.kayys.farabi.engine.QueryContracts.ParameterizedPlan;
 import tech.kayys.farabi.engine.QueryContracts.Submission;
 
-/**
- * Compatibility ports for datasource integrations.
- *
- * <p>The canonical provider and catalog contracts live in DataSourceContracts;
- * query execution reuses the engine's parameterized plan and submission types.</p>
- */
+/** Ports for datasource persistence, discovery, authorization, and execution. */
 public final class DataSourcePorts {
     private DataSourcePorts() {}
 
     public interface Registry {
         Optional<Descriptor> find(String sourceId);
         List<Descriptor> list();
+    }
+
+    /** Workspace-scoped persistence; implementations must include workspace in every lookup. */
+    public interface ConnectionRegistry {
+        boolean register(ConnectionDefinition definition);
+        Optional<ConnectionDefinition> find(String sourceId, String workspaceId);
+        List<ConnectionDefinition> list(String workspaceId);
+        boolean remove(String sourceId, String workspaceId);
     }
 
     public interface CatalogProvider {
