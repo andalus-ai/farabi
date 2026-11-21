@@ -12,17 +12,17 @@ import tech.kayys.farabi.engine.DataSourceContracts.Feature;
 import tech.kayys.farabi.engine.DataSourceContracts.Health;
 import tech.kayys.farabi.engine.DataSourceContracts.ProviderKind;
 import tech.kayys.farabi.engine.DataSourceContracts.SourceHealth;
+import tech.kayys.farabi.engine.QueryContracts.Submission;
 import tech.kayys.farabi.engine.QueryPorts;
 import tech.kayys.farabi.engine.QueryLifecycle;
 
 /**
- * Bridges the Dremio REST adapters into Farabi's provider-neutral datasource
- * contract. Catalog discovery is injected so the adapter never leaks Dremio
- * REST payloads into the engine API.
+ * Provider-key adapter for Dremio. A host-supplied factory resolves the
+ * connection definition and creates the endpoint-specific REST clients/catalog.
+ * This keeps credentials and per-source HTTP configuration outside the engine.
  *
- * <p>Dremio's SQL REST endpoint currently has no parameter-binding support in
- * this adapter. The provider therefore does not advertise that capability and
- * refuses parameterized plans rather than silently dropping their values.</p>
+ * <p>Dremio SQL parameter binding is not implemented by the current REST
+ * executor. The provider refuses parameterized plans rather than dropping values.</p>
  */
 public final class DremioSourceProvider implements DataSourceContracts.Provider {
     private static final Capabilities CAPABILITIES = new Capabilities(
@@ -31,42 +31,54 @@ public final class DremioSourceProvider implements DataSourceContracts.Provider 
             1_000_000,
             1_000);
 
-    private final Descriptor descriptor;
-    private final Catalog catalog;
-    private final DremioExecutor executor;
-    private final DremioJobProvider lifecycle;
-
-    public DremioSourceProvider(
+    public record Source(
             Descriptor descriptor,
             Catalog catalog,
             DremioExecutor executor,
             DremioJobProvider lifecycle) {
-        this.descriptor = Objects.requireNonNull(descriptor, "descriptor");
-        this.catalog = Objects.requireNonNull(catalog, "catalog");
-        this.executor = Objects.requireNonNull(executor, "executor");
-        this.lifecycle = Objects.requireNonNull(lifecycle, "lifecycle");
-        if (!"dremio".equalsIgnoreCase(descriptor.providerId())) {
-            throw new IllegalArgumentException("providerId must be dremio");
+        public Source {
+            Objects.requireNonNull(descriptor, "descriptor");
+            Objects.requireNonNull(catalog, "catalog");
+            Objects.requireNonNull(executor, "executor");
+            Objects.requireNonNull(lifecycle, "lifecycle");
         }
     }
 
-    public Descriptor descriptor() {
-        return descriptor;
+    @FunctionalInterface
+    public interface SourceFactory {
+        Source open(ConnectionDefinition definition);
     }
 
-    public Capabilities capabilities() {
+    private final SourceFactory sources;
+
+    public DremioSourceProvider(SourceFactory sources) {
+        this.sources = Objects.requireNonNull(sources, "sources");
+    }
+
+    @Override
+    public Descriptor descriptor(ConnectionDefinition definition) {
+        return source(definition).descriptor();
+    }
+
+    @Override
+    public Capabilities capabilities(ConnectionDefinition definition) {
+        source(definition);
         return CAPABILITIES;
     }
 
-    public Catalog catalog() {
-        return catalog;
+    @Override
+    public Catalog catalog(ConnectionDefinition definition) {
+        return source(definition).catalog();
     }
 
-    public QueryPorts.Executor executor() {
-        return executor;
+    @Override
+    public QueryPorts.Executor executor(ConnectionDefinition definition) {
+        return source(definition).executor();
     }
 
-    public QueryPorts.ParameterizedExecutor parameterizedExecutor() {
+    @Override
+    public QueryPorts.ParameterizedExecutor parameterizedExecutor(ConnectionDefinition definition) {
+        source(definition);
         return plan -> {
             Objects.requireNonNull(plan, "plan");
             throw new UnsupportedOperationException(
@@ -74,63 +86,30 @@ public final class DremioSourceProvider implements DataSourceContracts.Provider 
         };
     }
 
-    public QueryLifecycle.Provider lifecycle() {
-        return lifecycle;
+    @Override
+    public QueryLifecycle.Provider lifecycle(ConnectionDefinition definition) {
+        return source(definition).lifecycle();
     }
 
     /** A configured adapter is not proof that the remote endpoint is reachable. */
-    public Health health() {
-        return Health.UNKNOWN;
-    }
-
-    @Override
-    public Descriptor descriptor(ConnectionDefinition definition) {
-        requireDefinition(definition);
-        return descriptor;
-    }
-
-    @Override
-    public Capabilities capabilities(ConnectionDefinition definition) {
-        requireDefinition(definition);
-        return capabilities();
-    }
-
-    @Override
-    public Catalog catalog(ConnectionDefinition definition) {
-        requireDefinition(definition);
-        return catalog();
-    }
-
-    @Override
-    public QueryPorts.Executor executor(ConnectionDefinition definition) {
-        requireDefinition(definition);
-        return executor();
-    }
-
-    @Override
-    public QueryPorts.ParameterizedExecutor parameterizedExecutor(ConnectionDefinition definition) {
-        requireDefinition(definition);
-        return parameterizedExecutor();
-    }
-
-    @Override
-    public QueryLifecycle.Provider lifecycle(ConnectionDefinition definition) {
-        requireDefinition(definition);
-        return lifecycle();
-    }
-
     @Override
     public SourceHealth health(ConnectionDefinition definition) {
-        requireDefinition(definition);
-        return new SourceHealth(health(), Instant.now(), null);
+        source(definition);
+        return new SourceHealth(Health.UNKNOWN, Instant.now(), null);
     }
 
-    private void requireDefinition(ConnectionDefinition definition) {
+    private Source source(ConnectionDefinition definition) {
         Objects.requireNonNull(definition, "definition");
         if (definition.providerKind() != ProviderKind.DREMIO
-                || !"dremio".equalsIgnoreCase(definition.providerKey())
-                || !descriptor.sourceId().equals(definition.sourceId())) {
-            throw new IllegalArgumentException("connection definition does not match this Dremio provider");
+                || !"dremio".equalsIgnoreCase(definition.providerKey())) {
+            throw new IllegalArgumentException("connection definition is not configured for Dremio");
         }
+        Source source = Objects.requireNonNull(sources.open(definition),
+                "Dremio source factory returned null");
+        if (!definition.sourceId().equals(source.descriptor().sourceId())
+                || !"dremio".equalsIgnoreCase(source.descriptor().providerId())) {
+            throw new IllegalStateException("Dremio source factory returned a descriptor for another source");
+        }
+        return source;
     }
 }
