@@ -13,6 +13,7 @@ import org.eclipse.microprofile.config.inject.ConfigProperty;
 import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts;
 import tech.kayys.farabi.engine.DatasetDeletionService;
 import tech.kayys.farabi.engine.DatasetDeletionWorker;
+import tech.kayys.farabi.engine.DatasetDeletionRecoveryAuthorizer;
 import tech.kayys.farabi.file.LocalDatasetObjectStore;
 import tech.kayys.farabi.jdbc.JdbcDatasetDeletionStore;
 import tech.kayys.farabi.s3.S3CompatibleDatasetAdapter;
@@ -33,6 +34,13 @@ public class DatasetStorageLifecycleBeans {
     DatasetStorageLifecyclePorts.Authorizer denyDeletionByDefault() {
         return (workspace, subject, dataset) -> {
             throw new jakarta.ws.rs.ForbiddenException("dataset deletion policy is not configured");
+        };
+    }
+
+    @Produces @Singleton @DefaultBean
+    DatasetDeletionRecoveryAuthorizer denyDeletionRecoveryByDefault() {
+        return (subject, workspace) -> {
+            throw new jakarta.ws.rs.ForbiddenException("dataset deletion recovery policy is not configured");
         };
     }
 

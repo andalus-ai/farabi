@@ -60,6 +60,26 @@ class S3CompatibleDatasetAdapterTest {
     }
 
     @Test
+    void existenceCheckUsesWorkspaceScopedHeadLookup() {
+        S3Client client=mock(S3Client.class);
+        String workspace="workspace-a";
+        String prefix=java.util.HexFormat.of().formatHex(sha256(workspace));
+        String ref="s3://farabi-data/datasets/"+prefix+"/object.csv";
+        when(client.headObject(any(HeadObjectRequest.class)))
+                .thenReturn(HeadObjectResponse.builder().contentLength(12L).build());
+        var adapter=new S3CompatibleDatasetAdapter(client,"farabi-data",temp,1024,
+                new LocalFileDatasetAdapter.Limits(1024,100,20,100),Clock.systemUTC());
+        assertTrue(adapter.exists(ref,workspace));
+        verify(client).headObject(any(HeadObjectRequest.class));
+    }
+
+    private static byte[] sha256(String value) {
+        try { return java.security.MessageDigest.getInstance("SHA-256")
+                .digest(value.getBytes(java.nio.charset.StandardCharsets.UTF_8)); }
+        catch(java.security.NoSuchAlgorithmException e) { throw new IllegalStateException(e); }
+    }
+
+    @Test
     void rejectsObjectReferenceFromAnotherWorkspaceBeforeReadingStorage() {
         S3Client client = mock(S3Client.class);
         var adapter = new S3CompatibleDatasetAdapter(client, "farabi-data", temp, 1024,

@@ -7,7 +7,8 @@ import java.util.Optional;
 import java.util.UUID;
 import tech.kayys.farabi.engine.DatasetStorageLifecyclePorts.*;
 
-/** Authorization-first deletion request; physical deletion is asynchronous and retryable. */
+/** @deprecated Direct deletion is disabled; use the maker-checker approval API. */
+@Deprecated(forRemoval = false)
 public final class DatasetDeletionService {
     private final Authorizer authorizer;
     private final Store store;

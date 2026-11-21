@@ -29,6 +29,8 @@ public final class DatasetDeletionWorker {
         Deletion job=claimed.get();
         try {
             objects.delete(job.locationRef(),job.workspaceId());
+            if(objects.exists(job.locationRef(),job.workspaceId()))
+                throw new IllegalStateException("provider still reports the dataset object after deletion");
             if(!store.complete(job.id(),job.leaseToken(),clock.instant()))
                 throw new IllegalStateException("deletion lease lost before completion");
         } catch(RuntimeException failure) {

@@ -22,11 +22,9 @@ public final class JdbcWorkspaceStorageStore implements QuotaStore {
     @Override public Reservation reserve(String workspace,UUID id,long bytes,Instant now) {
         if(workspace==null||workspace.isBlank()||id==null||bytes<=0)throw new IllegalArgumentException("invalid reservation");
         try(Connection c=source.getConnection()){
+            ensureWorkspaceRow(c, workspace, now);
             c.setAutoCommit(false);
             try{
-                try(PreparedStatement p=c.prepareStatement("INSERT INTO farabi_workspace_storage(workspace_id,quota_bytes,used_bytes,reserved_bytes,updated_at) VALUES(?,?,0,0,?) ON CONFLICT(workspace_id) DO NOTHING")){
-                    p.setString(1,workspace);p.setLong(2,defaultQuotaBytes);p.setTimestamp(3,Timestamp.from(now));p.executeUpdate();
-                }
                 int updated;
                 try(PreparedStatement p=c.prepareStatement("UPDATE farabi_workspace_storage SET reserved_bytes=reserved_bytes+?,updated_at=? WHERE workspace_id=? AND used_bytes+reserved_bytes+?<=quota_bytes")){
                     p.setLong(1,bytes);p.setTimestamp(2,Timestamp.from(now));p.setString(3,workspace);p.setLong(4,bytes);updated=p.executeUpdate();
@@ -44,13 +42,43 @@ public final class JdbcWorkspaceStorageStore implements QuotaStore {
     @Override public Optional<Usage> usage(String workspace) {
         if(workspace==null||workspace.isBlank())throw new IllegalArgumentException("workspace required");
         try(Connection c=source.getConnection()){
-            try(PreparedStatement insert=c.prepareStatement("INSERT INTO farabi_workspace_storage(workspace_id,quota_bytes,used_bytes,reserved_bytes,updated_at) VALUES(?,?,0,0,?) ON CONFLICT(workspace_id) DO NOTHING")){
-                insert.setString(1,workspace);insert.setLong(2,defaultQuotaBytes);insert.setTimestamp(3,Timestamp.from(Instant.now()));insert.executeUpdate();
-            }
+            ensureWorkspaceRow(c, workspace, Instant.now());
             try(PreparedStatement p=c.prepareStatement("SELECT quota_bytes,used_bytes,reserved_bytes FROM farabi_workspace_storage WHERE workspace_id=?")){
                 p.setString(1,workspace);try(ResultSet r=p.executeQuery()){return r.next()?Optional.of(new Usage(workspace,r.getLong(1),r.getLong(2),r.getLong(3))):Optional.empty();}
             }
         }catch(SQLException e){throw new IllegalStateException("read workspace storage usage failed",e);}
+    }
+
+    /**
+     * Portable insert-if-absent without vendor-specific ON CONFLICT/MERGE syntax.
+     * This runs in auto-commit mode; a concurrent winner may cause a unique-key error,
+     * which is accepted only after confirming that the row now exists.
+     */
+    private void ensureWorkspaceRow(Connection c, String workspace, Instant now) throws SQLException {
+        try (PreparedStatement find = c.prepareStatement(
+                "SELECT 1 FROM farabi_workspace_storage WHERE workspace_id=?")) {
+            find.setString(1, workspace);
+            try (ResultSet rows = find.executeQuery()) {
+                if (rows.next()) return;
+            }
+        }
+        try (PreparedStatement insert = c.prepareStatement(
+                "INSERT INTO farabi_workspace_storage(workspace_id,quota_bytes,used_bytes,reserved_bytes,updated_at) VALUES(?,?,0,0,?)")) {
+            insert.setString(1, workspace);
+            insert.setLong(2, defaultQuotaBytes);
+            insert.setTimestamp(3, Timestamp.from(now));
+            insert.executeUpdate();
+        } catch (SQLException failure) {
+            String state = failure.getSQLState();
+            if (state == null || !state.startsWith("23")) throw failure;
+            try (PreparedStatement find = c.prepareStatement(
+                    "SELECT 1 FROM farabi_workspace_storage WHERE workspace_id=?")) {
+                find.setString(1, workspace);
+                try (ResultSet rows = find.executeQuery()) {
+                    if (!rows.next()) throw failure;
+                }
+            }
+        }
     }
 
     @Override public void releaseReservation(UUID id,String workspace,Instant now) {
