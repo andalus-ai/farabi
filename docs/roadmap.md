@@ -1,7 +1,10 @@
 # Farabi implementation roadmap
 
 ## Release strategy
-Prefer **one cohesive PR per verified milestone**, not dozens of tiny PRs. Each milestone must include code, tests, docs, migration notes and rollback strategy. Keep PRs open until CI is green and reviewable. Never bypass branch protection to save time.
+
+Prefer **one cohesive PR per verified milestone**, not dozens of tiny PRs. Each milestone
+must include code, tests, docs, migration notes and rollback strategy. Keep PRs open until CI
+is green and reviewable. Never bypass branch protection to save time.
 
 | Phase | Deliverable | Exit gate |
 |---|---|---|
@@ -11,16 +14,31 @@ Prefer **one cohesive PR per verified milestone**, not dozens of tiny PRs. Each 
 | R3: Conventional BI | Semantic catalog, Tenun chart spec, dashboard CRUD, filters | User can author/publish dashboard |
 | R4: Agentic BI | Agent planning, Batik A2UI, governed tool contracts | Agent cannot bypass policy; deterministic artifact schema |
 | R5: Promotion | Dynamic draft -> immutable versioned dashboard artifact | Reproducible rendering and revision history |
-| R6: Statistical intelligence foundation | Secure data import, dataset profiling, statistical method registry, descriptive and inferential statistics, specialist agent plans | Reproducible known-answer tests, assumption checks, tenant isolation |\n| R7: Advanced research and presentation | Regression, forecasting, multivariate, causal and specialized methods; Tenun/Batik charts and research reports | Method validation, uncertainty/diagnostics, reproducible artifacts |\n| R8: Enterprise/scale | Sharing, RBAC/ABAC, observability, caching, multi-source, distributed analysis | Load, security and recovery benchmarks |
+| R6: Statistical intelligence foundation | Secure data import, dataset profiling, statistical method registry, descriptive and inferential statistics, specialist agent plans | Reproducible known-answer tests, assumption checks, tenant isolation |
+| R7: Advanced research and presentation | Regression, forecasting, multivariate, causal and specialized methods; Tenun/Batik charts and research reports | Method validation, uncertainty/diagnostics, reproducible artifacts |
+| R8: Enterprise/scale | Sharing, RBAC/ABAC, observability, caching, multi-source, distributed analysis | Load, security and recovery benchmarks |
 
 ## Critical path
-Identity -> governed semantic compiler -> durable query lifecycle -> results -> chart contract -> dashboard artifact -> agent orchestration -> promotion.
+
+Identity -> governed semantic compiler -> durable query lifecycle -> results -> chart contract
+-> dashboard artifact -> agent orchestration -> promotion.
 
 ## Testing pyramid
-Engine unit tests; adapter contract tests; PostgreSQL integration tests; Dremio transport fixtures; Quarkus startup smoke tests; policy and tenant isolation tests; worker race tests; UI and A2UI schema conformance.
+
+Engine unit tests; adapter contract tests; PostgreSQL integration tests; Dremio transport
+fixtures; Quarkus startup smoke tests; policy and tenant isolation tests; worker race tests;
+UI and A2UI schema conformance.
 
 ## Migration from earlier BI work
-Old PRs #25–#30 in the prior repository are **historical reference**, not automatically present or merged here. This foundation reestablishes compatible architectural ideas in the new repository. Compare legacy package/API and SQL schema contracts before copying existing BI worker or semantic implementation.
+
+Old PRs #25–#30 in the prior repository are **historical reference**, not automatically
+present or merged here. This foundation reestablishes compatible architectural ideas in the
+new repository. Compare legacy package/API and SQL schema contracts before copying existing
+BI worker or semantic implementation.
 
 ## PR hygiene and account limits
-Use a long-lived integration milestone branch with small local commits, one PR per cohesive deliverable, and batched Git tree commits when appropriate. GitHub account suspension is not established to be caused by PR count; do not treat reducing PR frequency as a guarantee against account restrictions.
+
+Use a long-lived integration milestone branch with small local commits, one PR per cohesive
+deliverable, and batched Git tree commits when appropriate. GitHub account suspension is not
+established to be caused by PR count; do not treat reducing PR frequency as a guarantee
+against account restrictions.
