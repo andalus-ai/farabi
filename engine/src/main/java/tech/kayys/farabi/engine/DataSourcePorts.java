@@ -44,6 +44,12 @@ public final class DataSourcePorts {
         Submission execute(ParameterizedPlan plan);
     }
 
+    /** Resolves opaque secret references at connection-open time; callers must wipe returned buffers. */
+    @FunctionalInterface
+    public interface SecretResolver {
+        char[] resolve(String secretReference);
+    }
+
     @FunctionalInterface
     public interface ConnectionAuthorizer {
         void authorize(String workspaceId, String subjectId, String sourceId, Action action);
