@@ -1,6 +1,9 @@
 package tech.kayys.farabi.engine;
 
+import java.net.URI;
+import java.time.Instant;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
 
@@ -91,31 +94,7 @@ public final class DataSourceContracts {
         }
     }
 
-    public record CatalogEntry(String catalog, String schema, String name, String type) {
-        public CatalogEntry {
-            QueryContracts.required(name, "name");
-            QueryContracts.required(type, "type");
-        }
-    }
-
-    public record ColumnMetadata(
-            String name, String nativeType, DatasetContracts.LogicalType logicalType,
-            boolean nullable, Integer ordinalPosition) {
-        public ColumnMetadata {
-            QueryContracts.required(name, "name");
-            QueryContracts.required(nativeType, "nativeType");
-            Objects.requireNonNull(logicalType, "logicalType");
-            if (ordinalPosition != null && ordinalPosition < 1) {
-                throw new IllegalArgumentException("ordinalPosition must be positive");
-            }
-        }
-    }
-    public record Descriptor(
-        String sourceId,
-        String providerId,
-        String displayName,
-        String providerVersion
-    ) {
+    public record Descriptor(String sourceId, String providerId, String displayName, String providerVersion) {
         public Descriptor {
             QueryContracts.required(sourceId, "sourceId");
             QueryContracts.required(providerId, "providerId");
@@ -125,20 +104,11 @@ public final class DataSourceContracts {
     }
 
     public enum Feature {
-        PARAMETERIZED_QUERIES,
-        CANCELLATION,
-        RESULT_PAGING,
-        SCHEMAS,
-        VIEWS,
-        DATE_TRUNCATION,
-        OFFSET_PAGINATION
+        PARAMETERIZED_QUERIES, CANCELLATION, RESULT_PAGING, SCHEMAS, VIEWS,
+        DATE_TRUNCATION, OFFSET_PAGINATION
     }
 
-    public record Capabilities(
-        Set<Feature> features,
-        int maximumRows,
-        int maximumPageSize
-    ) {
+    public record Capabilities(Set<Feature> features, int maximumRows, int maximumPageSize) {
         public Capabilities {
             features = Set.copyOf(Objects.requireNonNull(features, "features"));
             if (maximumRows < 1) throw new IllegalArgumentException("maximumRows must be positive");
@@ -165,11 +135,7 @@ public final class DataSourceContracts {
         STRING, INTEGER, DECIMAL, BOOLEAN, DATE, TIMESTAMP, TIME, BINARY, UNKNOWN
     }
 
-    public record ColumnMetadata(
-        String name,
-        LogicalType type,
-        boolean nullable
-    ) {
+    public record ColumnMetadata(String name, LogicalType type, boolean nullable) {
         public ColumnMetadata {
             QueryContracts.required(name, "name");
             Objects.requireNonNull(type, "type");
@@ -177,13 +143,8 @@ public final class DataSourceContracts {
     }
 
     public record RelationMetadata(
-        String relationId,
-        String catalog,
-        String schema,
-        String name,
-        EntryKind kind,
-        List<ColumnMetadata> columns
-    ) {
+            String relationId, String catalog, String schema, String name,
+            EntryKind kind, List<ColumnMetadata> columns) {
         public RelationMetadata {
             QueryContracts.required(relationId, "relationId");
             QueryContracts.required(name, "name");
@@ -191,15 +152,6 @@ public final class DataSourceContracts {
             if (kind != EntryKind.TABLE && kind != EntryKind.VIEW)
                 throw new IllegalArgumentException("relation kind must be TABLE or VIEW");
             columns = List.copyOf(Objects.requireNonNull(columns, "columns"));
-        }
-    }
-
-    public enum HealthStatus { AVAILABLE, DEGRADED, UNAVAILABLE, UNKNOWN }
-
-    public record Health(HealthStatus status, String diagnostic) {
-        public Health {
-            Objects.requireNonNull(status, "status");
-            diagnostic = diagnostic == null ? "" : diagnostic;
         }
     }
 
