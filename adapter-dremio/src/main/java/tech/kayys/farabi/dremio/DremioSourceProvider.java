@@ -8,8 +8,6 @@ import tech.kayys.farabi.engine.DataSourceContracts.Capabilities;
 import tech.kayys.farabi.engine.DataSourceContracts.Descriptor;
 import tech.kayys.farabi.engine.DataSourceContracts.Feature;
 import tech.kayys.farabi.engine.DataSourceContracts.Health;
-import tech.kayys.farabi.engine.QueryContracts.ParameterizedPlan;
-import tech.kayys.farabi.engine.QueryContracts.Submission;
 import tech.kayys.farabi.engine.QueryPorts;
 import tech.kayys.farabi.engine.QueryLifecycle;
 
