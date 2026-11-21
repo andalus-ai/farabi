@@ -41,7 +41,7 @@ class JdbcSourceProviderTest {
     }
 
     @Test void reportsCapabilitiesAndHealth() {
-        assertEquals("h2", provider.capabilities(definition).dialectId());
+        assertEquals("h2", provider.capabilitySet(definition).dialectId());
         assertEquals(Health.AVAILABLE, provider.testConnection(definition).health());
     }
 
