@@ -23,6 +23,10 @@ public final class DremioExecutor implements Executor {
     }
     @Override public Submission submit(Plan plan) {
         Objects.requireNonNull(plan);
+        if (!plan.parameters().isEmpty()) {
+            throw new UnsupportedOperationException(
+                "Dremio SQL API parameter binding is not implemented; refusing to discard query parameters");
+        }
         try {
             HttpRequest request=HttpRequest.newBuilder(endpoint).timeout(Duration.ofSeconds(30))
                 .header("Authorization","Bearer "+token).header("Content-Type","application/json")
