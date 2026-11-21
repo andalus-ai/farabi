@@ -5,23 +5,18 @@ import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
 import javax.sql.DataSource;
-import tech.kayys.farabi.engine.DataSourceContracts.DataSourceDescriptor;
+import tech.kayys.farabi.engine.DataSourceContracts.Descriptor;
 import tech.kayys.farabi.engine.DataSourcePorts.Registry;
 
-/**
- * Immutable registry of application-managed JDBC pools.
- * Pool creation, credentials, TLS and secret rotation belong to runtime wiring,
- * never to the engine or this adapter.
- */
+/** Immutable registry of application-managed JDBC pools. */
 public final class JdbcDataSourceRegistry implements Registry {
     private final Map<String, Entry> entries;
 
     public JdbcDataSourceRegistry(Map<String, Entry> entries) {
         this.entries = Map.copyOf(Objects.requireNonNull(entries, "entries"));
         this.entries.forEach((id, entry) -> {
-            if (!id.equals(entry.descriptor().id())) {
-                throw new IllegalArgumentException("registry key must match descriptor id");
-            }
+            if (!id.equals(entry.descriptor().sourceId()))
+                throw new IllegalArgumentException("registry key must match descriptor source id");
         });
     }
 
@@ -31,23 +26,22 @@ public final class JdbcDataSourceRegistry implements Registry {
         return entry.dataSource();
     }
 
-    @Override public Optional<DataSourceDescriptor> find(String sourceId) {
+    @Override public Optional<Descriptor> find(String sourceId) {
         Entry entry = entries.get(sourceId);
         return entry == null ? Optional.empty() : Optional.of(entry.descriptor());
     }
 
-    @Override public List<DataSourceDescriptor> list() {
+    @Override public List<Descriptor> list() {
         return entries.values().stream().map(Entry::descriptor)
-                .sorted(java.util.Comparator.comparing(DataSourceDescriptor::id)).toList();
+                .sorted(java.util.Comparator.comparing(Descriptor::sourceId)).toList();
     }
 
-    public record Entry(DataSourceDescriptor descriptor, DataSource dataSource) {
+    public record Entry(Descriptor descriptor, DataSource dataSource) {
         public Entry {
             Objects.requireNonNull(descriptor, "descriptor");
             Objects.requireNonNull(dataSource, "dataSource");
-            if (descriptor.providerKind() != tech.kayys.farabi.engine.DataSourceContracts.ProviderKind.JDBC) {
+            if (!"jdbc".equalsIgnoreCase(descriptor.providerId()))
                 throw new IllegalArgumentException("JDBC registry accepts JDBC descriptors only");
-            }
         }
     }
 }
