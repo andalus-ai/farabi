@@ -29,8 +29,8 @@ public final class DataSourcePorts {
 
     /** Reports source capabilities; capability hints are never authorization decisions. */
     @FunctionalInterface
-    public interface CapabilitiesProvider {
-        DataSourceCapabilities capabilities(String sourceId);
+    public interface ProviderRegistry {
+        Optional<Provider> find(String providerKey);
     }
 
     /** Executes a plan only after the engine has applied authorization and policy validation. */
@@ -38,4 +38,11 @@ public final class DataSourcePorts {
     public interface QueryExecutor {
         Submission execute(ParameterizedPlan plan);
     }
+
+    @FunctionalInterface
+    public interface ConnectionAuthorizer {
+        void authorize(String workspaceId, String subjectId, String sourceId, Action action);
+    }
+
+    public enum Action { REGISTER, VIEW, TEST, DISCOVER, QUERY, DELETE }
 }

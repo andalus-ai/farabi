@@ -63,3 +63,17 @@ Do not call a feature complete unless the user-visible scenario works with real 
 ## Escalation
 
 When a request conflicts with these guardrails, explain the tradeoff and propose a compliant implementation. User-approved changes to product direction should update the normative vision document and this file together.
+
+
+## Andalus integration boundary
+
+- Farabi is an independent analytics/research product. Andalus is a neutral, optional agent runtime/orchestration foundation; Farabi must remain usable without it.
+- Farabi may expose selected governed tools, a specialist analytics/research agent, and/or its complete product APIs. These surfaces are complementary.
+- Farabi owns research intent, semantic models, dataset and column/row governance, method validation, query planning, authorized execution, provenance, statistical result artifacts, dashboard manifests, revisions and publication.
+- Andalus owns generic agent execution, model routing, orchestration and delegation lifecycle. It must not become the analytics policy authority or canonical store for Farabi state.
+- Tools and agents must call Farabi application use cases. Never expose unrestricted SQL/JDBC or raw data-source adapters as agent tools.
+- Support embedded, local-sidecar and remote-service deployment options behind versioned contracts. MCP/A2A are optional interoperability adapters, not mandatory internal protocols.
+- Current Java compatibility is a gate: Farabi's documented Java 21 baseline and inspected Andalus Java 25 baseline mean remote integration is preferred until a common JDK/BOM and full compatibility are proven.
+- Every invocation must carry server-validated identity/tenant context, correlation, capability allowlist, policy constraints, budgets, deadlines and cancellation. Farabi re-authorizes every data and publication operation.
+- Keep NumU as the candidate reusable platform foundation and Aljabr as the shared math/statistics/ML engine; neither transfers Farabi product authority.
+- Do not make Andalus mandatory or claim integration is implemented merely because a candidate adapter is documented.
