@@ -57,7 +57,6 @@ public final class DremioCatalog implements Catalog {
         }
         if (token == null || token.isBlank()) throw new IllegalArgumentException("Dremio token required");
         this.base = base;
-        if (token == null || token.isBlank()) throw new IllegalArgumentException("Dremio token required");
         this.token = token;
     }
 
