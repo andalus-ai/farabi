@@ -255,8 +255,9 @@ public final class DremioCatalog implements Catalog {
         if (type.contains("BOOL")) return LogicalType.BOOLEAN;
         if (type.contains("TINYINT") || type.contains("SMALLINT") || type.contains("INT") || type.contains("LONG")) return LogicalType.INTEGER;
         if (type.contains("DECIMAL") || type.contains("NUMERIC") || type.contains("FLOAT") || type.contains("DOUBLE")) return LogicalType.DECIMAL;
-        if (type.contains("DATE") && !type.contains("TIME")) return LogicalType.DATE;
-        if (type.contains("TIME")) return LogicalType.TIMESTAMP;
+        if (type.contains("DATE")) return LogicalType.DATE;
+        if (type.contains("TIMESTAMP")) return LogicalType.TIMESTAMP;
+        if (type.equals("TIME") || type.startsWith("TIME(")) return LogicalType.TIME;
         if (type.contains("BINARY") || type.contains("VARBINARY")) return LogicalType.BINARY;
         if (type.contains("CHAR") || type.contains("STRING") || type.contains("VARCHAR")) return LogicalType.STRING;
         return LogicalType.UNKNOWN;
