@@ -6,7 +6,6 @@ import tech.kayys.farabi.engine.DataSourceContracts.CatalogEntry;
 import tech.kayys.farabi.engine.DataSourceContracts.ColumnMetadata;
 import tech.kayys.farabi.engine.DataSourceContracts.ConnectionDefinition;
 import tech.kayys.farabi.engine.DataSourceContracts.Descriptor;
-import tech.kayys.farabi.engine.DataSourceContracts.Provider;
 import tech.kayys.farabi.engine.QueryContracts.ParameterizedPlan;
 import tech.kayys.farabi.engine.QueryContracts.Submission;
 
@@ -32,7 +31,22 @@ public final class DataSourcePorts {
         List<ColumnMetadata> listColumns(String sourceId, String catalog, String schema, String objectName);
     }
 
-    /** Reports source capabilities; capability hints are never authorization decisions. */
+    /**
+     * Adapter SPI for a configured source. Implementations are stateless with
+     * respect to workspace connections: each operation receives its definition.
+     */
+    public interface Provider {
+        String providerKey();
+        DataSourceContracts.CapabilitySet capabilities(ConnectionDefinition definition);
+        DataSourceContracts.SourceHealth testConnection(ConnectionDefinition definition);
+        List<String> catalogs(ConnectionDefinition definition);
+        List<String> schemas(ConnectionDefinition definition, String catalog);
+        List<CatalogEntry> datasets(ConnectionDefinition definition, String catalog, String schema);
+        List<ColumnMetadata> columns(
+                ConnectionDefinition definition, String catalog, String schema, String dataset);
+    }
+
+    /** Provider discovery is separate from source-specific connection persistence. */
     @FunctionalInterface
     public interface ProviderRegistry {
         Optional<Provider> find(String providerKey);
