@@ -11,7 +11,6 @@ import java.net.http.HttpResponse;
 import java.nio.charset.StandardCharsets;
 import java.time.Duration;
 import java.util.ArrayList;
-import java.util.Iterator;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
@@ -32,14 +31,25 @@ import tech.kayys.farabi.engine.DataSourceContracts.RelationMetadata;
 public final class DremioCatalog implements Catalog {
     private static final String CATALOG_PATH = "/api/v3/catalog";
 
-    private final HttpClient http;
+    @FunctionalInterface
+    public interface Transport {
+        Response get(URI uri, String bearerToken);
+    }
+
+    public record Response(int statusCode, String body) {}
+
     private final ObjectMapper json;
     private final URI base;
+    private final Transport transport;
     private final String token;
 
     public DremioCatalog(HttpClient http, ObjectMapper json, URI base, String token) {
-        this.http = Objects.requireNonNull(http, "http");
+        this(json, base, (uri, bearer) -> send(http, uri, bearer), token);
+    }
+
+    public DremioCatalog(ObjectMapper json, URI base, Transport transport, String token) {
         this.json = Objects.requireNonNull(json, "json");
+        this.transport = Objects.requireNonNull(transport, "transport");
         Objects.requireNonNull(base, "base");
         if (!"https".equalsIgnoreCase(base.getScheme()) || base.getHost() == null
                 || base.getRawQuery() != null || base.getRawFragment() != null) {
@@ -47,6 +57,7 @@ public final class DremioCatalog implements Catalog {
         }
         if (token == null || token.isBlank()) throw new IllegalArgumentException("Dremio token required");
         this.base = base;
+        if (token == null || token.isBlank()) throw new IllegalArgumentException("Dremio token required");
         this.token = token;
     }
 
@@ -124,32 +135,42 @@ public final class DremioCatalog implements Catalog {
     }
 
     private JsonNode call(String path) {
-        HttpRequest request = HttpRequest.newBuilder(base.resolve(path))
+        Response response = transport.get(base.resolve(path), token);
+        if (response.statusCode() == 404) {
+            throw new IllegalArgumentException("Dremio catalog entity was not found");
+        }
+        if (response.statusCode() == 401 || response.statusCode() == 403) {
+            throw new SecurityException("Dremio catalog access was denied (HTTP " + response.statusCode() + ")");
+        }
+        if (response.statusCode() < 200 || response.statusCode() >= 300) {
+            throw new IllegalStateException("Dremio catalog API HTTP " + response.statusCode());
+        }
+        if (response.body() == null || response.body().isBlank()) {
+            throw new IllegalStateException("Dremio catalog API returned an empty response");
+        }
+        try {
+            return json.readTree(response.body());
+        } catch (IOException failure) {
+            throw new IllegalStateException("Dremio catalog API returned malformed JSON", failure);
+        }
+    }
+
+    private static Response send(HttpClient http, URI uri, String token) {
+        HttpRequest request = HttpRequest.newBuilder(uri)
                 .timeout(Duration.ofSeconds(30))
                 .header("Authorization", "Bearer " + token)
                 .header("Accept", "application/json")
                 .GET()
                 .build();
         try {
-            HttpResponse<String> response = http.send(request, HttpResponse.BodyHandlers.ofString());
-            if (response.statusCode() == 404) {
-                throw new IllegalArgumentException("Dremio catalog entity was not found");
-            }
-            if (response.statusCode() == 401 || response.statusCode() == 403) {
-                throw new SecurityException("Dremio catalog access was denied (HTTP " + response.statusCode() + ")");
-            }
-            if (response.statusCode() < 200 || response.statusCode() >= 300) {
-                throw new IllegalStateException("Dremio catalog API HTTP " + response.statusCode());
-            }
-            if (response.body() == null || response.body().isBlank()) {
-                throw new IllegalStateException("Dremio catalog API returned an empty response");
-            }
-            return json.readTree(response.body());
+            HttpResponse<String> response = Objects.requireNonNull(http, "http")
+                    .send(request, HttpResponse.BodyHandlers.ofString());
+            return new Response(response.statusCode(), response.body());
         } catch (InterruptedException interrupted) {
             Thread.currentThread().interrupt();
             throw new IllegalStateException("Dremio catalog request interrupted", interrupted);
         } catch (IOException failure) {
-            throw new IllegalStateException("Dremio catalog transport or JSON failure", failure);
+            throw new IllegalStateException("Dremio catalog transport failure", failure);
         }
     }
 
