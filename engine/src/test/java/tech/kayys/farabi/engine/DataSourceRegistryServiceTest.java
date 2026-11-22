@@ -36,6 +36,53 @@ class DataSourceRegistryServiceTest {
         assertEquals(List.of(Action.TEST), calls);
     }
 
+
+    @Test
+    void delegatesDiscoveryToProviderOnlyAfterWorkspaceAuthorization() {
+        var registry = new InMemoryRegistry();
+        registry.register(definition());
+        var provider = new Provider() {
+            @Override public String providerKey() { return "jdbc-test"; }
+            @Override public CapabilitySet capabilities(ConnectionDefinition d) {
+                return new CapabilitySet(true, true, true, false, false, false,
+                        false, false, List.of("STRING"), "test");
+            }
+            @Override public SourceHealth testConnection(ConnectionDefinition d) {
+                return new SourceHealth(Health.AVAILABLE, Instant.EPOCH, null);
+            }
+            @Override public List<String> catalogs(ConnectionDefinition d) {
+                return List.of("warehouse");
+            }
+            @Override public List<String> schemas(ConnectionDefinition d, String catalog) {
+                return List.of("public");
+            }
+            @Override public List<CatalogEntry> datasets(
+                    ConnectionDefinition d, String catalog, String schema) {
+                return List.of(new CatalogEntry("warehouse.public.orders", "orders", EntryKind.TABLE));
+            }
+            @Override public List<ColumnMetadata> columns(
+                    ConnectionDefinition d, String catalog, String schema, String dataset) {
+                return List.of(new ColumnMetadata("id", LogicalType.INTEGER, false));
+            }
+        };
+        var actions = new ArrayList<Action>();
+        var service = new DataSourceRegistryService(registry,
+                key -> "jdbc-test".equals(key) ? Optional.of(provider) : Optional.empty(),
+                (w, subject, id, action) -> {
+                    assertEquals("workspace-a", w);
+                    assertEquals("alice", subject);
+                    actions.add(action);
+                });
+
+        assertEquals(Health.AVAILABLE,
+                service.testConnection("sales", "workspace-a", "alice").health());
+        assertEquals(List.of("warehouse"), service.catalogs("sales", "workspace-a", "alice"));
+        assertEquals(1, service.datasets("sales", "workspace-a", "warehouse", "public", "alice").size());
+        assertEquals("id", service.columns(
+                "sales", "workspace-a", "warehouse", "public", "orders", "alice").getFirst().name());
+        assertEquals(List.of(Action.TEST, Action.DISCOVER, Action.DISCOVER, Action.DISCOVER), actions);
+    }
+
     private static final class InMemoryRegistry implements ConnectionRegistry {
         private final Map<String, ConnectionDefinition> sources = new HashMap<>();
         @Override public boolean register(ConnectionDefinition d) {
