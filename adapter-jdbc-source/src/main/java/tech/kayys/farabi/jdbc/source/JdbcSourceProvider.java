@@ -14,6 +14,8 @@ import java.util.Locale;
 import java.util.Objects;
 import java.util.Set;
 import tech.kayys.farabi.engine.DataSourceContracts.*;
+import tech.kayys.farabi.engine.DataSourcePorts.Provider;
+import tech.kayys.farabi.engine.DataSourceContracts.LogicalType;
 
 /**
  * Generic JDBC metadata provider. Connection creation (including secret resolution,

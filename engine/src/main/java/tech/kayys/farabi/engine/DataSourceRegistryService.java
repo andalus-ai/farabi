@@ -1,6 +1,5 @@
 package tech.kayys.farabi.engine;
 
-import java.time.Instant;
 import java.util.List;
 import java.util.Objects;
 import tech.kayys.farabi.engine.DataSourceContracts.*;
@@ -33,33 +32,29 @@ public final class DataSourceRegistryService {
 
     public SourceHealth testConnection(String sourceId, String workspaceId, String subjectId) {
         ConnectionDefinition definition = authorized(sourceId, workspaceId, subjectId, Action.TEST);
-        return provider(definition).health(definition);
+        return provider(definition).testConnection(definition);
     }
 
     public List<String> catalogs(String sourceId, String workspaceId, String subjectId) {
         ConnectionDefinition definition = authorized(sourceId, workspaceId, subjectId, Action.DISCOVER);
-        return provider(definition).catalog(definition).catalogs().stream().map(CatalogEntry::name).toList();
+        return List.copyOf(provider(definition).catalogs(definition));
     }
 
     public List<String> schemas(String sourceId, String workspaceId, String catalog, String subjectId) {
         ConnectionDefinition definition = authorized(sourceId, workspaceId, subjectId, Action.DISCOVER);
-        return provider(definition).catalog(definition).schemas(catalog).stream().map(CatalogEntry::name).toList();
+        return List.copyOf(provider(definition).schemas(definition, catalog));
     }
 
     public List<CatalogEntry> datasets(String sourceId, String workspaceId, String catalog,
                                        String schema, String subjectId) {
         ConnectionDefinition definition = authorized(sourceId, workspaceId, subjectId, Action.DISCOVER);
-        return List.copyOf(provider(definition).catalog(definition).relations(catalog, schema));
+        return List.copyOf(provider(definition).datasets(definition, catalog, schema));
     }
 
     public List<ColumnMetadata> columns(String sourceId, String workspaceId, String catalog,
                                         String schema, String dataset, String subjectId) {
         ConnectionDefinition definition = authorized(sourceId, workspaceId, subjectId, Action.DISCOVER);
-        RelationMetadata relation = provider(definition).catalog(definition).describe(dataset);
-        if (!Objects.equals(catalog, relation.catalog()) || !Objects.equals(schema, relation.schema())) {
-            throw new IllegalArgumentException("dataset does not belong to the requested catalog and schema");
-        }
-        return List.copyOf(relation.columns());
+        return List.copyOf(provider(definition).columns(definition, catalog, schema, dataset));
     }
 
     private ConnectionDefinition authorized(String sourceId, String workspaceId, String subjectId, Action action) {
