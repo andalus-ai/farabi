@@ -35,13 +35,26 @@ class JdbcSourceProviderTest {
                 .anyMatch(table -> table.name().equalsIgnoreCase("ORDERS")));
         var columns = provider.columns(definition, null, "ANALYTICS", "ORDERS");
         assertEquals(5, columns.size());
-        assertEquals("INTEGER", columns.stream().filter(c -> c.name().equals("ID")).findFirst().orElseThrow().logicalType().name());
-        assertEquals("DECIMAL", columns.stream().filter(c -> c.name().equals("AMOUNT")).findFirst().orElseThrow().logicalType().name());
-        assertEquals("JSON", columns.stream().filter(c -> c.name().equals("PAYLOAD")).findFirst().orElseThrow().logicalType().name());
+        assertEquals("INTEGER", columns.stream().filter(c -> c.name().equals("ID")).findFirst().orElseThrow().type().name());
+        assertEquals("DECIMAL", columns.stream().filter(c -> c.name().equals("AMOUNT")).findFirst().orElseThrow().type().name());
+        assertEquals("JSON", columns.stream().filter(c -> c.name().equals("PAYLOAD")).findFirst().orElseThrow().type().name());
+    }
+
+    @Test void exposesProviderNeutralCatalogAndRoundTripsRelationIds() {
+        assertEquals("orders", provider.descriptor(definition).sourceId());
+        assertTrue(provider.capabilities(definition).supports(Feature.SCHEMAS));
+        var catalog = provider.catalog(definition);
+        var orders = catalog.relations(null, "ANALYTICS").stream()
+                .filter(relation -> relation.name().equalsIgnoreCase("ORDERS"))
+                .findFirst().orElseThrow();
+        var described = catalog.describe(orders.id());
+        assertEquals("ORDERS", described.name());
+        assertEquals(EntryKind.TABLE, described.kind());
+        assertTrue(described.columns().stream().anyMatch(column -> column.type() == LogicalType.JSON));
     }
 
     @Test void reportsCapabilitiesAndHealth() {
-        assertEquals("h2", provider.capabilities(definition).dialectId());
+        assertEquals("h2", provider.capabilitySet(definition).dialectId());
         assertEquals(Health.AVAILABLE, provider.testConnection(definition).health());
     }
 

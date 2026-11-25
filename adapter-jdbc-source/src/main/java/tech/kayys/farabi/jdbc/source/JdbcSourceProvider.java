@@ -1,14 +1,18 @@
 package tech.kayys.farabi.jdbc.source;
 
+import java.nio.charset.StandardCharsets;
 import java.sql.Connection;
 import java.sql.DatabaseMetaData;
 import java.sql.ResultSet;
 import java.sql.SQLException;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Base64;
+import java.util.EnumSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
+import java.util.Set;
 import tech.kayys.farabi.engine.DataSourceContracts.*;
 import tech.kayys.farabi.engine.DataSourcePorts.Provider;
 import tech.kayys.farabi.engine.DataSourceContracts.LogicalType;
@@ -32,7 +36,7 @@ public final class JdbcSourceProvider implements Provider {
         this.connections = Objects.requireNonNull(connections, "connections");
     }
 
-    @Override public String providerKey() { return PROVIDER_KEY; }
+    public String providerKey() { return PROVIDER_KEY; }
 
     /** Opens a provider-owned connection for a separately governed execution adapter. */
     public Connection openConnection(ConnectionDefinition definition) throws SQLException {
@@ -52,7 +56,8 @@ public final class JdbcSourceProvider implements Provider {
         }
     }
 
-    @Override public CapabilitySet capabilities(ConnectionDefinition definition) {
+    /** Detailed vendor capability probe retained for diagnostics and dialect selection. */
+    public CapabilitySet capabilitySet(ConnectionDefinition definition) {
         return withConnection(definition, connection -> {
             DatabaseMetaData metadata = connection.getMetaData();
             String product = metadata.getDatabaseProductName();
@@ -64,7 +69,66 @@ public final class JdbcSourceProvider implements Provider {
         });
     }
 
-    @Override public SourceHealth testConnection(ConnectionDefinition definition) {
+    @Override
+    public Descriptor descriptor(ConnectionDefinition definition) {
+        requireJdbc(definition);
+        return new Descriptor(definition.sourceId(), PROVIDER_KEY, definition.displayName(), "jdbc-generic-v1");
+    }
+
+    @Override
+    public Capabilities capabilities(ConnectionDefinition definition) {
+        requireJdbc(definition);
+        CapabilitySet probed = capabilitySet(definition);
+        Set<Feature> features = EnumSet.noneOf(Feature.class);
+        if (probed.schemaDiscovery()) features.add(Feature.SCHEMAS);
+        if (probed.tableDiscovery()) features.add(Feature.VIEWS);
+        // Query execution is supplied by the separate governed JdbcQueryProvider,
+        // not by this metadata adapter.
+        return new Capabilities(features, 1, 1);
+    }
+
+    @Override
+    public Catalog catalog(ConnectionDefinition definition) {
+        requireJdbc(definition);
+        return new Catalog() {
+            @Override
+            public List<CatalogEntry> catalogs() {
+                return JdbcSourceProvider.this.catalogs(definition).stream()
+                        .map(name -> new CatalogEntry(name, name, EntryKind.CATALOG)).toList();
+            }
+
+            @Override
+            public List<CatalogEntry> schemas(String catalog) {
+                return JdbcSourceProvider.this.schemas(definition, catalog).stream()
+                        .map(name -> new CatalogEntry(catalog + "/" + name, name, EntryKind.SCHEMA)).toList();
+            }
+
+            @Override
+            public List<CatalogEntry> relations(String catalog, String schema) {
+                return JdbcSourceProvider.this.datasets(definition, catalog, schema);
+            }
+
+            @Override
+            public RelationMetadata describe(String relationId) {
+                String[] parts = decodeRelationId(relationId);
+                String catalog = emptyToNull(parts[0]);
+                String schema = emptyToNull(parts[1]);
+                String name = parts[2];
+                CatalogEntry entry = JdbcSourceProvider.this.datasets(definition, catalog, schema).stream()
+                        .filter(candidate -> candidate.id().equals(relationId))
+                        .findFirst().orElseThrow(() -> new IllegalArgumentException("JDBC relation not found"));
+                return new RelationMetadata(relationId, catalog, schema, name, entry.kind(),
+                        JdbcSourceProvider.this.columns(definition, catalog, schema, name));
+            }
+        };
+    }
+
+    @Override
+    public SourceHealth health(ConnectionDefinition definition) {
+        return testConnection(definition);
+    }
+
+    public SourceHealth testConnection(ConnectionDefinition definition) {
         Instant checkedAt = Instant.now();
         try {
             withConnection(definition, connection -> {
@@ -79,7 +143,7 @@ public final class JdbcSourceProvider implements Provider {
         }
     }
 
-    @Override public List<String> catalogs(ConnectionDefinition definition) {
+    public List<String> catalogs(ConnectionDefinition definition) {
         return withConnection(definition, connection -> {
             List<String> result = new ArrayList<>();
             try (ResultSet rows = connection.getMetaData().getCatalogs()) {
@@ -92,7 +156,7 @@ public final class JdbcSourceProvider implements Provider {
         });
     }
 
-    @Override public List<String> schemas(ConnectionDefinition definition, String catalog) {
+    public List<String> schemas(ConnectionDefinition definition, String catalog) {
         return withConnection(definition, connection -> {
             List<String> result = new ArrayList<>();
             try (ResultSet rows = connection.getMetaData().getSchemas(catalog, null)) {
@@ -105,31 +169,35 @@ public final class JdbcSourceProvider implements Provider {
         });
     }
 
-    @Override public List<CatalogEntry> datasets(ConnectionDefinition definition, String catalog, String schema) {
+    public List<CatalogEntry> datasets(ConnectionDefinition definition, String catalog, String schema) {
         return withConnection(definition, connection -> {
             List<CatalogEntry> result = new ArrayList<>();
             try (ResultSet rows = connection.getMetaData().getTables(catalog, schema, null, TABLE_TYPES)) {
                 while (rows.next()) {
-                    result.add(new CatalogEntry(rows.getString("TABLE_CAT"),
-                            rows.getString("TABLE_SCHEM"), rows.getString("TABLE_NAME"),
-                            rows.getString("TABLE_TYPE")));
+                    String tableCatalog = rows.getString("TABLE_CAT");
+                    String tableSchema = rows.getString("TABLE_SCHEM");
+                    String tableName = rows.getString("TABLE_NAME");
+                    String tableType = rows.getString("TABLE_TYPE");
+                    EntryKind kind = tableType != null && tableType.toUpperCase(Locale.ROOT).contains("VIEW")
+                            ? EntryKind.VIEW : EntryKind.TABLE;
+                    result.add(new CatalogEntry(encodeRelationId(tableCatalog, tableSchema, tableName),
+                            tableName, kind));
                 }
             }
             return List.copyOf(result);
         });
     }
 
-    @Override public List<ColumnMetadata> columns(ConnectionDefinition definition, String catalog,
-                                                   String schema, String dataset) {
+    public List<ColumnMetadata> columns(ConnectionDefinition definition, String catalog,
+                                        String schema, String dataset) {
         if (dataset == null || dataset.isBlank()) throw new IllegalArgumentException("dataset required");
         return withConnection(definition, connection -> {
             List<ColumnMetadata> result = new ArrayList<>();
             try (ResultSet rows = connection.getMetaData().getColumns(catalog, schema, dataset, null)) {
                 while (rows.next()) {
                     result.add(new ColumnMetadata(rows.getString("COLUMN_NAME"),
-                            rows.getString("TYPE_NAME"), logicalType(rows.getInt("DATA_TYPE"),
-                            rows.getString("TYPE_NAME")), rows.getInt("NULLABLE") != DatabaseMetaData.columnNoNulls,
-                            rows.getInt("ORDINAL_POSITION")));
+                            logicalType(rows.getInt("DATA_TYPE"), rows.getString("TYPE_NAME")),
+                            rows.getInt("NULLABLE") != DatabaseMetaData.columnNoNulls));
                 }
             }
             return List.copyOf(result);
@@ -146,6 +214,33 @@ public final class JdbcSourceProvider implements Provider {
             throw new IllegalStateException("JDBC source operation failed (SQLState " + e.getSQLState() + ")", e);
         }
     }
+
+    private static void requireJdbc(ConnectionDefinition definition) {
+        Objects.requireNonNull(definition, "definition");
+        if (definition.providerKind() != ProviderKind.JDBC || !PROVIDER_KEY.equals(definition.providerKey())) {
+            throw new IllegalArgumentException("connection definition is not configured for generic JDBC");
+        }
+    }
+
+    private static String encodeRelationId(String catalog, String schema, String name) {
+        String value = Objects.toString(catalog, "") + "\u0000"
+                + Objects.toString(schema, "") + "\u0000" + Objects.toString(name, "");
+        return Base64.getUrlEncoder().withoutPadding().encodeToString(value.getBytes(StandardCharsets.UTF_8));
+    }
+
+    private static String[] decodeRelationId(String relationId) {
+        if (relationId == null || relationId.isBlank()) throw new IllegalArgumentException("relationId required");
+        try {
+            String decoded = new String(Base64.getUrlDecoder().decode(relationId), StandardCharsets.UTF_8);
+            String[] parts = decoded.split("\u0000", -1);
+            if (parts.length != 3 || parts[2].isBlank()) throw new IllegalArgumentException("invalid JDBC relation id");
+            return parts;
+        } catch (IllegalArgumentException invalid) {
+            throw new IllegalArgumentException("invalid JDBC relation id", invalid);
+        }
+    }
+
+    private static String emptyToNull(String value) { return value == null || value.isEmpty() ? null : value; }
 
     private static String dialectId(String product) {
         String name = product == null ? "" : product.toLowerCase(Locale.ROOT);

@@ -27,6 +27,8 @@ A runtime may compose different implementations behind these ports. The engine d
 create connections or store credentials. Capabilities are advisory metadata, not policy
 decisions and not proof that an operation is safe.
 
+Provider operations receive the persisted `ConnectionDefinition` on each call. This lets a provider registry hold one generic adapter per provider key while the adapter resolves endpoint-specific resources from the requested workspace-scoped source. Do not store a mutable 'current source' on a singleton provider.
+
 ## JDBC adapter
 
 The customer-database adapter lives in the Maven module `adapter-jdbc-source`, with artifact
@@ -59,6 +61,7 @@ metadata behavior must be verified against supported database versions.
 - The JDBC source adapter is distinct from the JDBC persistence adapter.
 - The Dremio adapter must converge on the common source/catalog/capability contracts without
   replacing its existing durable asynchronous query-job lifecycle.
+- `DremioSourceProvider` bridges the existing REST executor and job lifecycle into `DataSourceContracts.Provider`. `DremioCatalog` implements v3 catalog/source, folder/schema, table/view and column discovery; `DremioSourceFactory` composes the source-scoped adapters and resolves a secret reference through `DataSourcePorts.SecretResolver`. Dremio parameter binding remains explicitly unsupported and must not be advertised. Quarkus provider-registry registration and live Dremio-version compatibility testing remain outstanding.
 - JDBC's synchronous execution path must be integrated with durable Farabi job management
   without weakening deadlines, cancellation, audit or workspace authorization.
 - No cross-source joins or distributed federation are implemented. Use Dremio/Toba or Trino

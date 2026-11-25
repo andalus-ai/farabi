@@ -27,7 +27,7 @@ import tech.kayys.farabi.engine.QueryPollingWorker;
 import tech.kayys.farabi.engine.QueryPorts;
 import tech.kayys.farabi.engine.WorkerCoordinator;
 
-@Testcontainers
+@Testcontainers(disabledWithoutDocker = true)
 class JdbcBackedQueryPollingLeaseTakeoverTest {
     @Container
     static final PostgreSQLContainer<?> POSTGRES =
