@@ -1,14 +1,19 @@
 package tech.kayys.farabi.quarkus;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import jakarta.enterprise.context.ApplicationScoped;
 import jakarta.enterprise.inject.Instance;
 import jakarta.enterprise.inject.Produces;
 import jakarta.inject.Inject;
 import jakarta.inject.Singleton;
+import java.net.http.HttpClient;
 import java.sql.DriverManager;
+import java.time.Duration;
 import java.util.Optional;
 import javax.sql.DataSource;
 import org.eclipse.microprofile.config.inject.ConfigProperty;
+import tech.kayys.farabi.dremio.DremioSourceFactory;
+import tech.kayys.farabi.dremio.DremioSourceProvider;
 import tech.kayys.farabi.engine.DataSourcePorts.ConnectionAuthorizer;
 import tech.kayys.farabi.engine.DataSourcePorts.ConnectionRegistry;
 import tech.kayys.farabi.engine.DataSourcePorts.ProviderRegistry;
@@ -20,7 +25,7 @@ import tech.kayys.farabi.jdbc.source.JdbcSourceProvider;
 import tech.kayys.farabi.jdbc.source.SecretBackedJdbcConnectionFactory;
 import tech.kayys.farabi.jdbc.source.WorkspaceScopedJdbcConnectionFactory;
 
-/** Quarkus composition root for the provider-neutral JDBC source adapter. */
+/** Quarkus composition root for workspace-scoped JDBC and Dremio source providers. */
 @ApplicationScoped
 public class JdbcSourceRuntime {
     private final Instance<SecretResolver> secretResolvers;
@@ -39,27 +44,49 @@ public class JdbcSourceRuntime {
         return new JdbcConnectionRegistry(metadataDataSource);
     }
 
-    @Produces @Singleton
-    JdbcSourceProvider jdbcSourceProvider() {
-        var secrets = (tech.kayys.farabi.engine.DataSourcePorts.SecretResolver) reference -> {
+    private tech.kayys.farabi.engine.DataSourcePorts.SecretResolver secretResolver() {
+        return reference -> {
             if (!secretResolvers.isResolvable()) {
                 throw new IllegalStateException("no deployment SecretResolver is configured");
             }
             char[] value = secretResolvers.get().resolve(reference);
             if (value == null || value.length == 0) {
-                throw new IllegalStateException("configured JDBC secret could not be resolved");
+                if (value != null) java.util.Arrays.fill(value, '\0');
+                throw new IllegalStateException("configured source secret could not be resolved");
             }
             return value;
         };
+    }
+
+    @Produces @Singleton
+    JdbcSourceProvider jdbcSourceProvider() {
         var connections = new SecretBackedJdbcConnectionFactory(
-                secrets, new AllowlistedJdbcConnectionPolicy(allowedHosts),
+                secretResolver(), new AllowlistedJdbcConnectionPolicy(allowedHosts),
                 (url, properties) -> DriverManager.getConnection(url, properties));
         return new JdbcSourceProvider(connections);
     }
 
     @Produces @Singleton
-    ProviderRegistry providerRegistry(JdbcSourceProvider jdbc) {
-        return key -> JdbcSourceProvider.PROVIDER_KEY.equals(key) ? Optional.of(jdbc) : Optional.empty();
+    DremioSourceProvider dremioSourceProvider() {
+        HttpClient http = HttpClient.newBuilder()
+                .connectTimeout(Duration.ofSeconds(10))
+                .build();
+        return new DremioSourceProvider(
+                new DremioSourceFactory(http, new ObjectMapper(), secretResolver()));
+    }
+
+    @Produces @Singleton
+    DremioDataSourcePortAdapter dremioDataSourcePort(DremioSourceProvider dremio) {
+        return new DremioDataSourcePortAdapter(dremio);
+    }
+
+    @Produces @Singleton
+    ProviderRegistry providerRegistry(JdbcSourceProvider jdbc, DremioDataSourcePortAdapter dremio) {
+        return key -> {
+            if (JdbcSourceProvider.PROVIDER_KEY.equals(key)) return Optional.of(jdbc);
+            if ("dremio".equalsIgnoreCase(key)) return Optional.of(dremio);
+            return Optional.empty();
+        };
     }
 
     /** Deny by default until Numu-backed identity and authorization are installed. */
