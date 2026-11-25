@@ -39,4 +39,19 @@ class DataSourceContractsTest {
                 "sales", null, null, "sales",
                 DataSourceContracts.EntryKind.SCHEMA, List.of()));
     }
+
+    @Test void jdbcMetadataConstructorsNormalizeIntoOneContract() {
+        var table = new DataSourceContracts.CatalogEntry(
+                "analytics", "public", "orders", "TABLE");
+        assertEquals("orders", table.name());
+        assertEquals(DataSourceContracts.EntryKind.TABLE, table.kind());
+        assertEquals("analytics", table.catalog());
+        assertEquals("public", table.schema());
+
+        var column = new DataSourceContracts.ColumnMetadata(
+                "amount", "DECIMAL(12,2)", DataSourceContracts.LogicalType.DECIMAL, false, 2);
+        assertEquals(DataSourceContracts.LogicalType.DECIMAL, column.logicalType());
+        assertEquals("DECIMAL(12,2)", column.nativeType());
+        assertEquals(2, column.ordinalPosition());
+    }
 }

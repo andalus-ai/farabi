@@ -123,11 +123,37 @@ public final class DataSourceContracts {
 
     public enum EntryKind { CATALOG, SCHEMA, TABLE, VIEW }
 
-    public record CatalogEntry(String id, String name, EntryKind kind) {
+    /**
+     * Provider-neutral relation identity. The three-argument constructor is the
+     * canonical engine API; the four-argument constructor preserves catalog/schema
+     * details supplied by JDBC metadata adapters.
+     */
+    public record CatalogEntry(
+            String id, String name, EntryKind kind, String catalog, String schema) {
+        public CatalogEntry(String id, String name, EntryKind kind) {
+            this(id, name, kind, null, null);
+        }
+
+        public CatalogEntry(String catalog, String schema, String name, String nativeKind) {
+            this(relationId(catalog, schema, name), name, entryKind(nativeKind), catalog, schema);
+        }
+
         public CatalogEntry {
             QueryContracts.required(id, "id");
             QueryContracts.required(name, "name");
             Objects.requireNonNull(kind, "kind");
+        }
+
+        private static String relationId(String catalog, String schema, String name) {
+            QueryContracts.required(name, "name");
+            return java.util.stream.Stream.of(catalog, schema, name)
+                    .filter(value -> value != null && !value.isBlank())
+                    .collect(java.util.stream.Collectors.joining("."));
+        }
+
+        private static EntryKind entryKind(String nativeKind) {
+            return nativeKind != null && nativeKind.equalsIgnoreCase("TABLE")
+                    ? EntryKind.TABLE : EntryKind.VIEW;
         }
     }
 
@@ -135,14 +161,36 @@ public final class DataSourceContracts {
         STRING, INTEGER, DECIMAL, BOOLEAN, DATE, TIMESTAMP, TIME, BINARY, JSON, UNKNOWN
     }
 
-    public record ColumnMetadata(String name, LogicalType type, boolean nullable) {
+    /**
+     * Column metadata retains native type and ordinal when supplied, while keeping
+     * the compact three-argument constructor for providers with normalized metadata.
+     */
+    public record ColumnMetadata(
+            String name, LogicalType logicalType, boolean nullable,
+            String nativeType, int ordinalPosition) {
+        public ColumnMetadata(String name, LogicalType logicalType, boolean nullable) {
+            this(name, logicalType, nullable, null, 0);
+        }
+
+        public ColumnMetadata(String name, String nativeType, LogicalType logicalType,
+                              boolean nullable, int ordinalPosition) {
+            this(name, logicalType, nullable, nativeType, ordinalPosition);
+        }
+
         public ColumnMetadata {
             QueryContracts.required(name, "name");
-            Objects.requireNonNull(type, "type");
+            Objects.requireNonNull(logicalType, "logicalType");
+            if (ordinalPosition < 0) {
+                throw new IllegalArgumentException("ordinalPosition cannot be negative");
+            }
+        }
+
+        public LogicalType type() {
+            return logicalType;
         }
     }
 
-    public record RelationMetadata(
+        public record RelationMetadata(
             String relationId, String catalog, String schema, String name,
             EntryKind kind, List<ColumnMetadata> columns) {
         public RelationMetadata {
@@ -185,7 +233,6 @@ public final class DataSourceContracts {
     }
 
     public interface Registry {
-        Provider require(String sourceId);
         List<Descriptor> availableSources();
     }
 }

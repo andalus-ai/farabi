@@ -30,32 +30,5 @@ public final class JdbcDatasetStorageInventoryAuditLog implements DatasetStorage
         } catch (SQLException e) { throw new IllegalStateException("append storage inventory audit event failed",e); }
     }
 
-    @Override public List<Event> recent(String workspaceId, UUID jobId, int limit) {
-        if (workspaceId == null || workspaceId.isBlank()) throw new IllegalArgumentException("workspaceId required");
-        if (limit < 1 || limit > 1000) throw new IllegalArgumentException("limit must be 1..1000");
-        String sql = jobId == null
-                ? "SELECT id,workspace_id,job_id,actor_id,event_type,attempt,report_id,error_code,occurred_at "
-                    + "FROM farabi_storage_inventory_audit WHERE workspace_id=? ORDER BY occurred_at DESC LIMIT ?"
-                : "SELECT id,workspace_id,job_id,actor_id,event_type,attempt,report_id,error_code,occurred_at "
-                    + "FROM farabi_storage_inventory_audit WHERE workspace_id=? AND job_id=? "
-                    + "ORDER BY occurred_at DESC LIMIT ?";
-        try (Connection c = source.getConnection(); PreparedStatement p = c.prepareStatement(sql)) {
-            p.setString(1, workspaceId);
-            if (jobId == null) p.setInt(2, limit);
-            else { p.setObject(2, jobId); p.setInt(3, limit); }
-            try (ResultSet rows = p.executeQuery()) {
-                List<Event> events = new ArrayList<>();
-                while (rows.next()) {
-                    events.add(new Event(rows.getObject("id", UUID.class), rows.getString("workspace_id"),
-                            rows.getObject("job_id", UUID.class), rows.getString("actor_id"),
-                            EventType.valueOf(rows.getString("event_type")), rows.getInt("attempt"),
-                            rows.getObject("report_id", UUID.class), rows.getString("error_code"),
-                            rows.getTimestamp("occurred_at").toInstant()));
-                }
-                return List.copyOf(events);
-            }
-        } catch (SQLException e) {
-            throw new IllegalStateException("read storage inventory audit events failed", e);
-        }
-    }
+
 }
