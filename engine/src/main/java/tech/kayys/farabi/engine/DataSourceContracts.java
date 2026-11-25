@@ -210,29 +210,8 @@ public final class DataSourceContracts {
         RelationMetadata describe(String relationId);
     }
 
-    /** A source provider adapts discovery and remote job lifecycle to engine-owned ports. */
-    /**
-     * Provider adapter selected by providerKey. Methods receive the persisted
-     * connection definition so one adapter instance can safely serve many
-     * workspace-scoped sources without hidden mutable connection state.
-     */
-    public interface Provider {
-        Descriptor descriptor(ConnectionDefinition definition);
-        Capabilities capabilities(ConnectionDefinition definition);
-        Catalog catalog(ConnectionDefinition definition);
-        default QueryPorts.Executor executor(ConnectionDefinition definition) {
-            throw new UnsupportedOperationException("provider does not expose legacy query execution");
-        }
-        default QueryPorts.ParameterizedExecutor parameterizedExecutor(ConnectionDefinition definition) {
-            throw new UnsupportedOperationException("provider does not expose parameterized query execution");
-        }
-        default QueryLifecycle.Provider lifecycle(ConnectionDefinition definition) {
-            throw new UnsupportedOperationException("provider does not expose remote query lifecycle");
-        }
-        SourceHealth health(ConnectionDefinition definition);
-    }
-
     public interface Registry {
         List<Descriptor> availableSources();
     }
+
 }
