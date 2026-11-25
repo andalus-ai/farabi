@@ -37,7 +37,7 @@ public final class DataSourcePorts {
      */
     public interface Provider {
         String providerKey();
-        DataSourceContracts.CapabilitySet capabilities(ConnectionDefinition definition);
+        DataSourceContracts.Capabilities capabilities(ConnectionDefinition definition);
         DataSourceContracts.SourceHealth testConnection(ConnectionDefinition definition);
         List<String> catalogs(ConnectionDefinition definition);
         List<String> schemas(ConnectionDefinition definition, String catalog);
