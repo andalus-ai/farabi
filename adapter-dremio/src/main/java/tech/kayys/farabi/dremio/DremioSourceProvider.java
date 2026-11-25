@@ -69,7 +69,7 @@ public final class DremioSourceProvider implements Provider {
     public SourceHealth testConnection(ConnectionDefinition definition) {
         try {
             source(definition);
-            return new SourceHealth(Health.AVAILABLE, Instant.now(), null);
+            return new SourceHealth(Health.UNKNOWN, Instant.now(), null);
         } catch (SecurityException denied) {
             throw denied;
         } catch (RuntimeException unavailable) {
