@@ -69,7 +69,6 @@ public final class JdbcSourceProvider implements Provider {
         });
     }
 
-    @Override
     public Descriptor descriptor(ConnectionDefinition definition) {
         requireJdbc(definition);
         return new Descriptor(definition.sourceId(), PROVIDER_KEY, definition.displayName(), "jdbc-generic-v1");
@@ -87,7 +86,6 @@ public final class JdbcSourceProvider implements Provider {
         return new Capabilities(features, 1, 1);
     }
 
-    @Override
     public Catalog catalog(ConnectionDefinition definition) {
         requireJdbc(definition);
         return new Catalog() {
@@ -123,11 +121,11 @@ public final class JdbcSourceProvider implements Provider {
         };
     }
 
-    @Override
     public SourceHealth health(ConnectionDefinition definition) {
         return testConnection(definition);
     }
 
+    @Override
     public SourceHealth testConnection(ConnectionDefinition definition) {
         Instant checkedAt = Instant.now();
         try {
@@ -143,6 +141,7 @@ public final class JdbcSourceProvider implements Provider {
         }
     }
 
+    @Override
     public List<String> catalogs(ConnectionDefinition definition) {
         return withConnection(definition, connection -> {
             List<String> result = new ArrayList<>();
@@ -156,6 +155,7 @@ public final class JdbcSourceProvider implements Provider {
         });
     }
 
+    @Override
     public List<String> schemas(ConnectionDefinition definition, String catalog) {
         return withConnection(definition, connection -> {
             List<String> result = new ArrayList<>();
@@ -169,6 +169,7 @@ public final class JdbcSourceProvider implements Provider {
         });
     }
 
+    @Override
     public List<CatalogEntry> datasets(ConnectionDefinition definition, String catalog, String schema) {
         return withConnection(definition, connection -> {
             List<CatalogEntry> result = new ArrayList<>();
@@ -188,6 +189,7 @@ public final class JdbcSourceProvider implements Provider {
         });
     }
 
+    @Override
     public List<ColumnMetadata> columns(ConnectionDefinition definition, String catalog,
                                         String schema, String dataset) {
         if (dataset == null || dataset.isBlank()) throw new IllegalArgumentException("dataset required");
