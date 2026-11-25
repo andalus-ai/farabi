@@ -30,13 +30,16 @@ import tech.kayys.farabi.jdbc.source.WorkspaceScopedJdbcConnectionFactory;
 public class JdbcSourceRuntime {
     private final Instance<SecretResolver> secretResolvers;
     private final String allowedHosts;
+    private final String dremioAllowedHosts;
 
     @Inject
     public JdbcSourceRuntime(
             Instance<SecretResolver> secretResolvers,
-            @ConfigProperty(name = "farabi.sources.allowed-hosts", defaultValue = "") String allowedHosts) {
+            @ConfigProperty(name = "farabi.sources.allowed-hosts", defaultValue = "") String allowedHosts,
+            @ConfigProperty(name = "farabi.dremio.allowed-hosts", defaultValue = "") String dremioAllowedHosts) {
         this.secretResolvers = secretResolvers;
         this.allowedHosts = allowedHosts;
+        this.dremioAllowedHosts = dremioAllowedHosts;
     }
 
     @Produces @Singleton
@@ -71,8 +74,13 @@ public class JdbcSourceRuntime {
         HttpClient http = HttpClient.newBuilder()
                 .connectTimeout(Duration.ofSeconds(10))
                 .build();
-        return new DremioSourceProvider(
-                new DremioSourceFactory(http, new ObjectMapper(), secretResolver()));
+        var policy = new AllowlistedDremioEndpointPolicy(dremioAllowedHosts);
+        var factory = new DremioSourceFactory(http, new ObjectMapper(), secretResolver());
+        return new DremioSourceProvider(definition -> {
+            // Validate outbound destination before resolving the source credential.
+            policy.validate(definition.endpoint());
+            return factory.open(definition);
+        });
     }
 
     @Produces @Singleton
