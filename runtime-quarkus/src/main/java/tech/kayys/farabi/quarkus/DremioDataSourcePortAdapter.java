@@ -33,7 +33,7 @@ final class DremioDataSourcePortAdapter implements Provider {
 
     @Override
     public CapabilitySet capabilities(ConnectionDefinition definition) {
-        delegate.capabilities(definition);
+        requireDremio(definition);
         return new CapabilitySet(true, true, true, true, true, true,
                 false, false,
                 List.of("BOOLEAN", "INTEGER", "DECIMAL", "STRING", "DATE",
@@ -90,6 +90,14 @@ final class DremioDataSourcePortAdapter implements Provider {
         List<CatalogEntry> relations = source.relations(catalogEntry.id(), schemaId);
         CatalogEntry relation = resolve(relations, dataset, null, "dataset");
         return source.describe(relation.id()).columns();
+    }
+
+    private static void requireDremio(ConnectionDefinition definition) {
+        Objects.requireNonNull(definition, "definition");
+        if (definition.providerKind() != DataSourceContracts.ProviderKind.DREMIO
+                || !"dremio".equalsIgnoreCase(definition.providerKey())) {
+            throw new IllegalArgumentException("connection definition is not configured for Dremio");
+        }
     }
 
     private static CatalogEntry resolve(
