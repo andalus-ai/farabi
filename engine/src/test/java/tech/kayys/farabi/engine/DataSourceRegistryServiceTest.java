@@ -43,9 +43,8 @@ class DataSourceRegistryServiceTest {
         registry.register(definition());
         var provider = new Provider() {
             @Override public String providerKey() { return "jdbc-test"; }
-            @Override public CapabilitySet capabilities(ConnectionDefinition d) {
-                return new CapabilitySet(true, true, true, false, false, false,
-                        false, false, List.of("STRING"), "test");
+            @Override public Capabilities capabilities(ConnectionDefinition d) {
+                return new Capabilities(Set.of(Feature.SCHEMAS), 1, 1);
             }
             @Override public SourceHealth testConnection(ConnectionDefinition d) {
                 return new SourceHealth(Health.AVAILABLE, Instant.EPOCH, null);

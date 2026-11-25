@@ -8,7 +8,6 @@ import java.util.List;
 import java.util.Map;
 import org.junit.jupiter.api.Test;
 import tech.kayys.farabi.engine.DataSourceContracts;
-import tech.kayys.farabi.engine.QueryContracts;
 import static org.junit.jupiter.api.Assertions.*;
 
 class DremioSourceProviderTest {
@@ -40,19 +39,17 @@ class DremioSourceProviderTest {
         var provider = new DremioSourceProvider(definition -> source);
         var definition = definition();
 
-        assertEquals(source.descriptor(), provider.descriptor(definition));
-        assertSame(source.catalog(), provider.catalog(definition));
+        assertEquals(DremioSourceProvider.PROVIDER_KEY, provider.providerKey());
+        assertEquals(List.of(), provider.catalogs(definition));
         assertTrue(provider.capabilities(definition).supports(DataSourceContracts.Feature.CANCELLATION));
         assertTrue(provider.capabilities(definition).supports(DataSourceContracts.Feature.RESULT_PAGING));
         assertFalse(provider.capabilities(definition).supports(DataSourceContracts.Feature.PARAMETERIZED_QUERIES));
-        assertEquals(DataSourceContracts.Health.UNKNOWN, provider.health(definition).health());
-        assertThrows(UnsupportedOperationException.class, () -> provider.parameterizedExecutor(definition).submit(
-                new QueryContracts.ParameterizedPlan("source-1", "dremio", "select ?", List.of())));
+        assertEquals(DataSourceContracts.Health.UNKNOWN, provider.testConnection(definition).health());
     }
 
     @Test void rejectsFactoryDescriptorForAnotherProvider() {
         var provider = new DremioSourceProvider(definition -> source("jdbc"));
-        assertThrows(IllegalStateException.class, () -> provider.descriptor(definition()));
+        assertThrows(IllegalStateException.class, () -> provider.catalogs(definition()));
     }
 
     @Test void rejectsNonDremioConnectionDefinition() {
@@ -60,6 +57,6 @@ class DremioSourceProviderTest {
         var invalid = new DataSourceContracts.ConnectionDefinition("source-1", "workspace-a", "Warehouse",
                 DataSourceContracts.ProviderKind.JDBC, "jdbc",
                 URI.create("jdbc:postgresql://localhost/db"), null, null, Map.of(), null, true, Instant.EPOCH);
-        assertThrows(IllegalArgumentException.class, () -> provider.descriptor(invalid));
+        assertThrows(IllegalArgumentException.class, () -> provider.catalogs(invalid));
     }
 }

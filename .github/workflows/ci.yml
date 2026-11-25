@@ -15,4 +15,10 @@ jobs:
           distribution: temurin
           java-version: '21'
           cache: maven
+      - name: Ensure Docker is available for PostgreSQL integration tests
+        run: |
+          if ! docker info >/dev/null 2>&1; then
+            sudo systemctl start docker
+          fi
+          docker info
       - run: mvn --batch-mode --no-transfer-progress verify
